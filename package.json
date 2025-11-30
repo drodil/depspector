@@ -1,0 +1,74 @@
+{
+  "name": "@drodil/depspector",
+  "version": "0.0.1",
+  "main": "dist/cli.js",
+  "bin": {
+    "depspector": "./dist/cli.js"
+  },
+  "scripts": {
+    "run": "npm run build && npm start",
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:e2e": "jest tests/e2e",
+    "test:coverage": "jest --coverage",
+    "prettier:check": "prettier --check .",
+    "prettier:fix": "prettier --write .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "bump-test": "standard-version --dry-run --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'",
+    "bump": "standard-version --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'",
+    "postinstall": "if [ -z \"$CI\" ]; then npm run build && node dist/cli.js || true; fi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drodil/depspector.git"
+  },
+  "keywords": [
+    "dependency",
+    "analyzer",
+    "security",
+    "malware",
+    "dependency-scan"
+  ],
+  "author": "Heikki Hellgren (heiccih@gmail.com)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/drodil/depspector/issues"
+  },
+  "homepage": "https://github.com/drodil/depspector#readme",
+  "description": "Dependency analyzer for Node.js projects",
+  "dependencies": {
+    "@babel/parser": "^7.28.5",
+    "@babel/traverse": "^7.28.5",
+    "axios": "^1.13.2",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.2",
+    "glob": "^8.1.0",
+    "got": "^14.6.5",
+    "ora": "^5.4.1",
+    "semver": "^7.7.3",
+    "tar": "^7.5.2"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@jest/globals": "^30.2.0",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/glob": "^8.1.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.10.1",
+    "@types/semver": "^7.7.1",
+    "@types/tar": "^6.1.13",
+    "@typescript-eslint/eslint-plugin": "^8.48.0",
+    "@typescript-eslint/parser": "^8.48.0",
+    "eslint": "^9.39.1",
+    "jest": "^30.2.0",
+    "prettier": "^3.7.3",
+    "standard-version": "^9.5.0",
+    "ts-jest": "^29.4.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

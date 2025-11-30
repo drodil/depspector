@@ -1,0 +1,9 @@
+{
+  "analyzers": {
+    "network": {
+      "allowedHosts": ["google.com", "evil.com"]
+    }
+  },
+  "cacheDir": "./.cache",
+  "exitWithFailureOnLevel": "off"
+}

@@ -1,0 +1,25 @@
+{
+  "analyzers": {
+    "env": { "enabled": true, "allowedVariables": ["CI", "NODE_ENV"] },
+    "network": { "enabled": true, "allowedHosts": [] },
+    "eval": { "enabled": true },
+    "obfuscation": { "enabled": true },
+    "fs": { "enabled": true },
+    "typosquat": { "enabled": true },
+    "cooldown": { "enabled": true },
+    "dormant": { "enabled": true },
+    "dynamic": { "enabled": true },
+    "reputation": {
+      "enabled": true,
+      "whitelistedUsers": ["github-actions[bot]", "renovate[bot]"]
+    }
+  },
+  "exclude": [],
+  "exitWithFailureOnLevel": "high",
+  "reportLevel": "high",
+  "cacheDir": "/tmp/depspector-cache",
+  "npm": {
+    "registry": "https://registry.npmjs.org",
+    "token": "your-npm-token-here"
+  }
+}
