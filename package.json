@@ -5,6 +5,7 @@
   "bin": {
     "depspector": "./dist/cli.js"
   },
+  "prepublishOnly": "npm run build",
   "scripts": {
     "run": "npm run build && npm start",
     "build": "tsc",
@@ -20,6 +21,9 @@
     "bump-test": "standard-version --dry-run --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'",
     "bump": "standard-version --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'",
     "postinstall": "if [ -z \"$CI\" ]; then npm run build && node dist/cli.js || true; fi"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "repository": {
     "type": "git",
