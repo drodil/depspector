@@ -47,10 +47,18 @@
 
 ## Installation
 
+NPM
+
 ```bash
-npm install -g depspector
+npm install -g @drodil/depspector
 # OR
-npm install --save-dev depspector
+npm install --save-dev @drodil/depspector
+```
+
+YARN
+
+```bash
+yarn install --dev @drodil/depspector
 ```
 
 ## Usage
@@ -58,29 +66,29 @@ npm install --save-dev depspector
 Run Depspector in your project root:
 
 ```bash
-npx depspector
+npx @drodil/depspector
 ```
 
 ### Examples
 
 ```bash
 # Run with verbose output
-npx depspector --verbose
+npx @drodil/depspector --verbose
 
 # Clear cache before scanning
-npx depspector --clear-cache
+npx @drodil/depspector --clear-cache
 
 # Show only new issues
-npx depspector --only-new
+npx @drodil/depspector --only-new
 
 # Fail fast on first high severity issue
-npx depspector --fail-fast
+npx @drodil/depspector --fail-fast
 
 # Run in offline mode (skip network-dependent analyzers)
-npx depspector --offline
+npx @drodil/depspector --offline
 
 # Analyze a different project directory
-npx depspector --cwd /path/to/project
+npx @drodil/depspector --cwd /path/to/project
 ```
 
 ### Development Usage

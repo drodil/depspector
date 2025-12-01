@@ -70,36 +70,21 @@ program
     }
 
     const nodeModulesPath = path.resolve(options.path);
-
     if (!fs.existsSync(nodeModulesPath)) {
       spinner.fail(`node_modules not found at ${nodeModulesPath}`);
       process.exit(1);
     }
 
-    spinner.text = "Scanning dependencies (including transitive)...";
-
-    const ignorePatterns = [
-      "**/.bin/**",
-      "**/test/**",
-      "**/tests/**",
-      "**/__tests__/**",
-      "**/*.test.js",
-      "**/*.test.ts",
-      "**/example/**",
-      "**/examples/**",
-      "**/dist/**/package.json",
-      "**/build/**/package.json",
-      ...(config.exclude || []).map((e) => `**/${e}/**`),
-    ];
-
+    // Gather all package.json files in node_modules
     const packageJsonFiles = glob.sync("**/package.json", {
       cwd: nodeModulesPath,
-      ignore: ignorePatterns,
-      follow: true,
+      ignore: ["**/node_modules/**"],
     });
 
     const results: AnalysisResult[] = [];
     const diffs: DiffResult[] = [];
+    const diffQueue: Array<{ name: string; version: string; pkgDir: string }> =
+      [];
 
     for (const pkgJsonFile of packageJsonFiles) {
       const pkgDir = path.dirname(path.join(nodeModulesPath, pkgJsonFile));
@@ -211,18 +196,13 @@ program
           results.push(...filteredResults);
         }
 
-        if (packageHasIssues && options.diff) {
-          spinner.text = `Verifying changes for ${pkgJson.name}...`;
-          try {
-            const packageDiffs = await differ.diffPackage(
-              pkgJson.name,
-              pkgJson.version,
-              pkgDir,
-            );
-            diffs.push(...packageDiffs);
-          } catch (e) {
-            if (options.verbose) console.error(e);
-          }
+        // Collect for parallel diffing
+        if (packageHasIssues && options.diff && !offline) {
+          diffQueue.push({
+            name: pkgJson.name,
+            version: pkgJson.version,
+            pkgDir,
+          });
         }
 
         if (packageCache) {
@@ -254,6 +234,21 @@ program
       } catch (e) {
         console.warn(`Failed to parse ${pkgJsonFile}: ${e}`);
       }
+    }
+
+    if (diffQueue.length > 0) {
+      spinner.text = `Diffing ${diffQueue.length} packages in parallel...`;
+      const diffResults = await Promise.all(
+        diffQueue.map(({ name, version, pkgDir }) =>
+          differ.diffPackage(name, version, pkgDir).catch((e) => {
+            if (options.verbose) console.error(e);
+            return [];
+          }),
+        ),
+      );
+      diffResults.forEach((packageDiffs) => {
+        diffs.push(...packageDiffs);
+      });
     }
 
     spinner.stop();
