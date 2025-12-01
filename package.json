@@ -1,6 +1,6 @@
 {
   "name": "@drodil/depspector",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "main": "dist/cli.js",
   "bin": {
     "depspector": "./dist/cli.js"
