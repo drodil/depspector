@@ -1,0 +1,21 @@
+{
+  "name": "@drodil/depspector-linux-arm64-gnu",
+  "version": "0.0.3",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "main": "depspector.linux-arm64-gnu.node",
+  "files": ["depspector.linux-arm64-gnu.node"],
+  "description": "aarch64-unknown-linux-gnu binary for depspector",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 14"
+  },
+  "libc": ["glibc"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drodil/depspector.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

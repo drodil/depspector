@@ -1,78 +1,80 @@
 {
-  "name": "@drodil/depspector",
+  "name": "depspector",
   "version": "0.0.3",
-  "main": "dist/cli.js",
+  "description": "Dependency Inspector - A security analysis tool for npm packages",
+  "main": "index.js",
+  "types": "index.d.ts",
   "bin": {
-    "depspector": "./dist/cli.js"
+    "depspector": "./bin.js"
   },
-  "prepublishOnly": "npm run build",
+  "napi": {
+    "binaryName": "depspector",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "files": [
+    "bin.js",
+    "index.js",
+    "index.d.ts"
+  ],
   "scripts": {
-    "run": "npm run build && npm start",
-    "build": "tsc",
-    "start": "node dist/cli.js",
-    "test": "jest",
-    "test:unit": "jest tests/unit",
-    "test:e2e": "jest tests/e2e",
-    "test:coverage": "jest --coverage",
-    "prettier:check": "prettier --check .",
-    "prettier:fix": "prettier --write .",
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "prettier:check": "prettier --check .",
+    "prettier:fix": "prettier --write .",
+    "format": "cargo fmt",
+    "format:check": "cargo fmt -- --check",
+    "clippy": "cargo clippy -- -D warnings",
+    "cargo:test": "cargo test",
+    "cargo:build": "cargo build --release",
+    "universal": "napi universal -t npm",
+    "version": "napi version",
     "bump-test": "standard-version --dry-run --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'",
-    "bump": "standard-version --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'",
-    "postinstall": "if [ -z \"$CI\" ]; then npm run build && node dist/cli.js || true; fi"
+    "bump": "standard-version --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'"
   },
-  "publishConfig": {
-    "access": "public"
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@napi-rs/cli": "^3.0.0-alpha.65",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.29.0",
+    "prettier": "^3.5.3",
+    "standard-version": "^9.5.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  },
+  "optionalDependencies": {
+    "@depspector/darwin-arm64": "1.0.0",
+    "@depspector/darwin-x64": "1.0.0",
+    "@depspector/linux-arm64-gnu": "1.0.0",
+    "@depspector/linux-x64-gnu": "1.0.0",
+    "@depspector/linux-x64-musl": "1.0.0",
+    "@depspector/win32-x64-msvc": "1.0.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/drodil/depspector.git"
+    "url": "git+https://github.com/user/depspector.git"
   },
   "keywords": [
-    "dependency",
-    "analyzer",
+    "npm",
     "security",
+    "dependency",
+    "scanner",
+    "audit",
     "malware",
-    "dependency-scan"
+    "supply-chain"
   ],
   "author": "Heikki Hellgren (heiccih@gmail.com)",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/drodil/depspector/issues"
-  },
-  "homepage": "https://github.com/drodil/depspector#readme",
-  "description": "Dependency analyzer for Node.js projects",
-  "dependencies": {
-    "@babel/parser": "^7.28.5",
-    "@babel/traverse": "^7.28.5",
-    "axios": "^1.13.2",
-    "chalk": "^4.1.2",
-    "commander": "^14.0.2",
-    "glob": "^8.1.0",
-    "got": "^14.6.5",
-    "ora": "^5.4.1",
-    "semver": "^7.7.3",
-    "tar": "^7.5.2"
-  },
-  "devDependencies": {
-    "@commitlint/cli": "^19.0.0",
-    "@commitlint/config-conventional": "^19.0.0",
-    "@jest/globals": "^30.2.0",
-    "@types/babel__traverse": "^7.28.0",
-    "@types/glob": "^8.1.0",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^24.10.1",
-    "@types/semver": "^7.7.1",
-    "@types/tar": "^6.1.13",
-    "@typescript-eslint/eslint-plugin": "^8.48.0",
-    "@typescript-eslint/parser": "^8.48.0",
-    "eslint": "^9.39.1",
-    "jest": "^30.2.0",
-    "prettier": "^3.7.3",
-    "standard-version": "^9.5.0",
-    "ts-jest": "^29.4.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
-  }
+  "license": "MIT"
 }

@@ -6,9 +6,11 @@ Thank you for your interest in contributing to Depspector! This document provide
 
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
+- [Building the Project](#building-the-project)
 - [Code Quality](#code-quality)
-- [Commit Guidelines](#commit-guidelines)
 - [Testing](#testing)
+- [Commit Guidelines](#commit-guidelines)
+- [Adding New Analyzers](#adding-new-analyzers)
 - [Pull Request Process](#pull-request-process)
 
 ## Getting Started
@@ -30,92 +32,163 @@ Thank you for your interest in contributing to Depspector! This document provide
 
 ## Development Setup
 
-### Building the Project
+### Requirements
 
-```bash
-npm run build
-```
-
-This compiles TypeScript files from `src/` to `dist/`.
-
-### Running During Development
-
-```bash
-# Build first
-npm run build
-
-# Then run with options
-node dist/cli.js --verbose
-node dist/cli.js --clear-cache
-```
+- **Rust** (latest stable) - Install via [rustup](https://rustup.rs/)
+- **Node.js** 18+ with npm
+- **@napi-rs/cli** - Installed as a devDependency
 
 ### Project Structure
 
 ```
-src/
-├── cli.ts              # Command-line interface
-├── analyzer.ts         # Main analyzer orchestration
-├── config.ts           # Configuration management
-├── cache.ts            # Caching system
-├── differ.ts           # Package diffing functionality
-├── report.ts           # Report generation
-├── registryUtil.ts     # NPM registry utilities
-├── util.ts             # General utilities
-└── analyzers/          # Individual analyzer plugins
-    ├── base.ts         # Base analyzer interfaces
-    ├── env.ts          # Environment variable detection
-    ├── network.ts      # Network call detection
-    ├── eval.ts         # Dynamic code execution detection
-    ├── fs.ts           # File system access detection
-    ├── obfuscation.ts  # Code obfuscation detection
-    ├── typosquat.ts    # Typosquatting detection
-    ├── cooldown.ts     # New package detection
-    ├── dormant.ts      # Dormant package detection
-    ├── dynamic.ts      # Dynamic loading detection
-    └── reputation.ts   # Package reputation analysis
+src-rs/                 # Rust source code
+├── lib.rs              # Main entry point, napi exports, CLI
+├── config.rs           # Configuration management
+├── error.rs            # Error types (thiserror)
+├── util.rs             # Utility functions
+├── cache.rs            # Caching system
+├── differ.rs           # Package diffing
+├── registry.rs         # npm registry API client
+├── report.rs           # Report generation
+└── analyzers/          # Security analyzers
+    ├── mod.rs          # Analyzer registry and traits
+    ├── buffer.rs       # Buffer detection
+    ├── cooldown.rs     # New package detection
+    ├── cve.rs          # CVE detection
+    ├── dormant.rs      # Dormant package detection
+    ├── dynamic.rs      # Dynamic require detection
+    ├── env.rs          # Environment variable detection
+    ├── eval.rs         # Eval detection
+    ├── fs.rs           # Filesystem access detection
+    ├── metadata.rs     # Package metadata analysis
+    ├── minified.rs     # Minified code detection
+    ├── native.rs       # Native addon detection
+    ├── network.rs      # Network call detection
+    ├── obfuscation.rs  # Obfuscation detection
+    ├── pollution.rs    # Prototype pollution detection
+    ├── process.rs      # Process access detection
+    ├── reputation.rs   # Package reputation analysis
+    ├── scripts.rs      # Script hook detection
+    ├── secrets.rs      # Secrets/credentials detection
+    └── typosquat.rs    # Typosquatting detection
+
+npm/                    # Platform-specific npm packages
+├── darwin-arm64/       # macOS ARM64
+├── darwin-x64/         # macOS x64
+├── linux-x64-gnu/      # Linux x64 (glibc)
+├── linux-x64-musl/     # Linux x64 (musl)
+├── linux-arm64-gnu/    # Linux ARM64
+└── win32-x64-msvc/     # Windows x64
+```
+
+## Building the Project
+
+```bash
+# Build Rust native binary (release)
+npm run build
+
+# Build Rust native binary (debug, faster compilation)
+npm run build:debug
+
+# Run locally
+node bin.js --help
+node bin.js --path ./node_modules
+
+# Run Rust tests
+cargo test
+
+# Check Rust formatting
+cargo fmt --check
+
+# Run Rust linter
+cargo clippy -- -D warnings
 ```
 
 ## Code Quality
 
-We maintain high code quality standards using several tools:
+### Rust Formatting
 
-### ESLint
-
-ESLint is used to enforce code style and catch potential bugs.
+All Rust code must be formatted with `rustfmt`:
 
 ```bash
-# Check for linting errors
-npm run lint
+# Format code
+cargo fmt
 
-# Automatically fix linting errors
-npm run lint:fix
+# Check formatting
+cargo fmt -- --check
 ```
 
-Configuration: `eslint.config.js`
+### Rust Linting
 
-### Prettier
-
-Prettier is used for consistent code formatting.
+No Clippy warnings should exist:
 
 ```bash
-# Check code formatting
+cargo clippy -- -D warnings
+```
+
+### JavaScript/Config Files
+
+ESLint and Prettier are used for JavaScript and configuration files:
+
+```bash
+# Check linting
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
+
+# Check formatting
 npm run prettier:check
 
-# Automatically format code
+# Fix formatting
 npm run prettier:fix
 ```
 
-Configuration: `.prettierrc` (if exists) or defaults in `package.json`
+## Testing
 
-### TypeScript
+### Rust Unit Tests
 
-We use TypeScript for type safety. Ensure your code:
+All new Rust code must include unit tests in the same file:
 
-- Has proper type annotations
-- Passes TypeScript compilation without errors
-- Uses interfaces for complex types
+```bash
+# Run all Rust tests
+cargo test
 
-Configuration: `tsconfig.json`
+# Run specific test
+cargo test test_name
+
+# Run with output
+cargo test -- --nocapture
+```
+
+### Test Structure
+
+Tests should be in a `#[cfg(test)]` module:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_feature() {
+        // Arrange
+        let input = "test";
+
+        // Act
+        let result = my_function(input);
+
+        // Assert
+        assert!(result.is_ok());
+    }
+}
+```
+
+### JavaScript Binding Tests
+
+```bash
+npm test
+```
 
 ## Commit Guidelines
 
@@ -136,7 +209,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) enforced by 
 - **feat**: A new feature
 - **fix**: A bug fix
 - **docs**: Documentation only changes
-- **style**: Code style changes (formatting, missing semicolons, etc.)
+- **style**: Code style changes (formatting)
 - **refactor**: Code change that neither fixes a bug nor adds a feature
 - **perf**: Performance improvements
 - **test**: Adding or updating tests
@@ -146,10 +219,10 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) enforced by 
 
 ```bash
 # Good commit messages
-feat(analyzer): add support for dynamic import detection
+feat(analyzer): add support for CVE detection
 fix(cache): clear all directories when using --clear-cache
 docs(readme): update installation instructions
-test(analyzer): add unit tests for env analyzer
+test(network): add unit tests for network analyzer
 
 # Bad commit messages (will be rejected)
 update stuff
@@ -161,83 +234,148 @@ WIP
 
 Common scopes include:
 
-- `analyzer` - Main analyzer logic
+- `analyzer` - Analyzer logic
 - `cli` - Command-line interface
 - `cache` - Caching system
 - `config` - Configuration
 - `differ` - Diffing functionality
 - `report` - Reporting
-- `test` - Testing infrastructure
+- `registry` - npm registry API
 
-Configuration: `commitlint.config.js`
+## Adding New Analyzers
 
-## Testing
+### Step 1: Create the Analyzer File
 
-We use Jest for testing. All contributions should include appropriate tests.
+Create `src-rs/analyzers/myanalyzer.rs`:
 
-### Running Tests
+```rust
+//! My Analyzer - Detects suspicious patterns
+//!
+//! This analyzer looks for [description].
 
-```bash
-# Run all tests
-npm test
+use crate::config::Config;
+use crate::report::{Issue, Severity};
+use crate::util::generate_issue_id;
 
-# Run unit tests only
-npm run test:unit
+/// Default threshold value
+const DEFAULT_THRESHOLD: usize = 100;
 
-# Run end-to-end tests only
-npm run test:e2e
+/// Analyze source code for suspicious patterns
+pub fn analyze(
+    content: &str,
+    file_path: &str,
+    config: &Config,
+) -> Vec<Issue> {
+    let mut issues = Vec::new();
 
-# Run tests with coverage
-npm run test:coverage
+    // Get configuration with defaults
+    let threshold = config.analyzers
+        .as_ref()
+        .and_then(|a| a.myanalyzer.as_ref())
+        .and_then(|c| c.threshold)
+        .unwrap_or(DEFAULT_THRESHOLD);
+
+    // Analysis logic
+    for (line_num, line) in content.lines().enumerate() {
+        if line.contains("suspicious_pattern") {
+            let id = generate_issue_id(
+                "myanalyzer",
+                file_path,
+                line_num + 1,
+                "Suspicious pattern detected",
+            );
+
+            issues.push(Issue {
+                issue_type: "myanalyzer".to_string(),
+                line: line_num + 1,
+                message: "Suspicious pattern detected".to_string(),
+                severity: Severity::High,
+                code: Some(line.trim().to_string()),
+                analyzer: Some("myanalyzer".to_string()),
+                id: Some(id),
+            });
+        }
+    }
+
+    issues
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detects_suspicious_pattern() {
+        let content = "const x = suspicious_pattern();";
+        let config = Config::default();
+
+        let issues = analyze(content, "test.js", &config);
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].issue_type, "myanalyzer");
+    }
+
+    #[test]
+    fn test_clean_code_no_issues() {
+        let content = "const x = normalFunction();";
+        let config = Config::default();
+
+        let issues = analyze(content, "test.js", &config);
+
+        assert!(issues.is_empty());
+    }
+}
 ```
 
-### Writing Tests
+### Step 2: Register the Analyzer
 
-- Unit tests go in `tests/unit/`
-- End-to-end tests go in `tests/e2e/`
-- Test fixtures go in `tests/fixtures/`
+Add to `src-rs/analyzers/mod.rs`:
 
-Example unit test structure:
-
-```typescript
-import { MyAnalyzer } from "../../src/analyzers/myanalyzer";
-
-describe("MyAnalyzer", () => {
-  it("should detect suspicious pattern", () => {
-    // Test implementation
-  });
-});
+```rust
+pub mod myanalyzer;
 ```
 
-### Test Coverage
+And call it in the `analyze_packages` method.
 
-We aim for high test coverage. New features should include:
+### Step 3: Add Configuration (Optional)
 
-- Unit tests for individual components
-- Integration tests for feature workflows
-- Edge case handling
+Add to `src-rs/config.rs`:
+
+```rust
+#[derive(Debug, Clone, Deserialize)]
+pub struct MyAnalyzerConfig {
+    pub enabled: Option<bool>,
+    pub threshold: Option<usize>,
+    pub allowed_patterns: Option<Vec<String>>,
+}
+```
+
+### Step 4: Update Documentation
+
+- Update README.md with analyzer description
+- Add configuration examples
+- Document default values
 
 ## Pull Request Process
 
 1. **Before submitting:**
-   - Ensure all tests pass: `npm test`
-   - Run linting: `npm run lint:fix`
-   - Run formatting: `npm run prettier:fix`
-   - Update documentation if needed
+   - Ensure all Rust tests pass: `cargo test`
+   - Run Clippy: `cargo clippy -- -D warnings`
+   - Run formatting: `cargo fmt`
+   - Run linting: `npm run lint`
    - Build succeeds: `npm run build`
 
 2. **PR Description:**
    - Clearly describe what your PR does
    - Reference any related issues
-   - Include screenshots for UI changes (if applicable)
    - List any breaking changes
 
 3. **PR Title:**
    - Follow conventional commit format
-   - Example: `feat(analyzer): add new malware detection pattern`
+   - Example: `feat(analyzer): add CVE detection analyzer`
 
 4. **Review Process:**
-   - Maintain your PR by addressing review feedback
+   - Address review feedback
    - Keep your branch up to date with main
    - Squash commits if requested
 
@@ -245,34 +383,15 @@ We aim for high test coverage. New features should include:
    - Maintainers will merge your PR
    - Your contribution will be included in the next release
 
-## Adding New Analyzers
+## Cross-Platform Builds
 
-To add a new analyzer:
+The CI/CD pipeline builds native binaries for:
 
-1. Create a new file in `src/analyzers/` (e.g., `myanalyzer.ts`)
-2. Implement either `FileAnalyzerPlugin` or `PackageAnalyzerPlugin` interface
-3. Register the analyzer in `src/analyzer.ts`
-4. Add configuration options to `src/config.ts` if needed
-5. Add tests in `tests/unit/analyzers/`
-6. Update documentation in README.md
+- macOS (x64, ARM64)
+- Linux (x64 glibc, x64 musl, ARM64)
+- Windows (x64)
 
-Example analyzer structure:
-
-```typescript
-import { FileAnalyzerPlugin, AnalyzerContext } from "./base";
-import { Issue } from "../analyzer";
-
-export class MyAnalyzer implements FileAnalyzerPlugin {
-  name = "myanalyzer";
-  type = "file" as const;
-
-  analyze(node: any, context: AnalyzerContext): Issue[] {
-    const issues: Issue[] = [];
-    // Analysis logic here
-    return issues;
-  }
-}
-```
+Each platform has its own npm package that is listed as an `optionalDependency`. npm automatically downloads the correct binary for the user's platform.
 
 ## Questions or Issues?
 

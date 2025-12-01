@@ -1,0 +1,45 @@
+{
+  "packageFiles": [
+    "package.json",
+    "npm/darwin-x64/package.json",
+    "npm/darwin-arm64/package.json",
+    "npm/linux-arm64-gnu/package.json",
+    "npm/linux-x64-gnu/package.json",
+    "npm/linux-x64-musl/package.json",
+    "npm/win32-x64-msvc/package.json"
+  ],
+  "bumpFiles": [
+    {
+      "filename": "package.json",
+      "type": "json"
+    },
+    {
+      "filename": "npm/darwin-x64/package.json",
+      "type": "json"
+    },
+    {
+      "filename": "npm/darwin-arm64/package.json",
+      "type": "json"
+    },
+    {
+      "filename": "npm/linux-arm64-gnu/package.json",
+      "type": "json"
+    },
+    {
+      "filename": "npm/linux-x64-gnu/package.json",
+      "type": "json"
+    },
+    {
+      "filename": "npm/linux-x64-musl/package.json",
+      "type": "json"
+    },
+    {
+      "filename": "npm/win32-x64-msvc/package.json",
+      "type": "json"
+    },
+    {
+      "filename": "Cargo.toml",
+      "updater": "npm/update-cargo.js"
+    }
+  ]
+}

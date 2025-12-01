@@ -6,6 +6,8 @@
 
 **Depspector** is an advanced post-install security analysis tool for npm dependencies. It goes beyond simple CVE checks by performing deep static analysis and behavioral heuristic detection on your `node_modules`.
 
+Built with **Rust** for maximum performance and compiled to native Node.js bindings using [napi-rs](https://napi.rs/).
+
 ## Features
 
 - **🕵️ Deep Static Analysis**: Detects suspicious code patterns across 19 specialized analyzers:
@@ -39,7 +41,6 @@
   - Enable/disable individual analyzers
   - Configure severity levels and fail-fast behavior
 - **🔍 Advanced Features**:
-  - Version diffing to highlight code changes between package versions
   - Incremental scanning with `--only-new` flag
   - Cache management for faster subsequent scans
   - Detailed reporting with severity levels (critical/high/medium/low)
@@ -58,7 +59,7 @@ npm install --save-dev @drodil/depspector
 YARN
 
 ```bash
-yarn install --dev @drodil/depspector
+yarn add --dev @drodil/depspector
 ```
 
 ## Usage
@@ -96,12 +97,17 @@ npx @drodil/depspector --cwd /path/to/project
 If you're developing depspector, use these commands:
 
 ```bash
-# Build and run
+# Build the native binary (release)
 npm run build
-node dist/cli.js [options]
 
-# Or use the run script (without options)
-npm run run
+# Build the native binary (debug, faster compilation)
+npm run build:debug
+
+# Run Rust tests
+npm run cargo:test
+
+# Run locally
+node bin.js [options]
 ```
 
 ### Options
@@ -109,7 +115,6 @@ npm run run
 - `-p, --path <path>`: Path to `node_modules` (default: `./node_modules`).
 - `-c, --config <path>`: Path to configuration file (default: `.depspectorrc`).
 - `--cwd <path>`: Working directory where to run the analysis (default: `.`).
-- `--no-diff`: Disable diffing against previous versions (faster).
 - `--verbose`: Show detailed progress.
 - `--no-cache`: Disable package result caching (forces fresh analysis even if unchanged).
 - `--clear-cache`: Clear stored cache entries before scanning (use to force full regeneration while keeping caching enabled afterward).
@@ -117,11 +122,15 @@ npm run run
 - `--only-new`: Show only new issues found in this scan, excluding issues from cached packages (useful for incremental analysis).
 - `--offline`: Disable analyzers that require network access (CVE, cooldown, dormant, reputation). Useful for environments without internet access or to speed up scans.
 - `--ignore-issue <id...>`: Ignore specific issues by their ID (can be specified multiple times). Issue IDs are displayed in brackets after each finding.
+- `--concurrency <n>`: Maximum number of concurrent package analyses (defaults to number of CPU cores).
+- `--json <path>`: Output the analysis report as JSON to the specified file.
+- `--yaml <path>`: Output the analysis report as YAML to the specified file.
 
 ## Performance
 
 Depspector includes several optimizations for faster scanning:
 
+- **Native Performance**: Written in Rust and compiled to native code for maximum speed.
 - **Package Caching**: Caches both the fact a package was scanned and its findings. If a package's `package.json` is unchanged, its previous results are reused in the report (not silently dropped) and the code is not re-parsed.
 - **Parallel Analysis**: Package-level analyzers and file-level analyzers run in parallel to maximize performance.
 - **Configurable Cache Directory**: Use `cacheDir` in configuration to control where cache files are stored (useful for CI environments).
@@ -153,7 +162,11 @@ Create a `.depspectorrc` file in your project root:
       "allowedVariables": ["NODE_ENV", "CI"]
     },
     "fs": {
-      "enabled": true
+      "enabled": true,
+      "severity": "medium"
+    },
+    "minified": {
+      "severity": "low"
     }
   },
   "exclude": ["internal-package"],
@@ -171,9 +184,9 @@ Create a `.depspectorrc` file in your project root:
 | `exclude`                | Array\<string\>                                      | `[]`            | Package names to exclude from scanning.                                                        |
 | `ignoreIssues`           | Array\<string\>                                      | `[]`            | Issue IDs to ignore. Issue IDs are displayed in brackets after each finding in the report.     |
 | `exitWithFailureOnLevel` | `"critical" \| "high" \| "medium" \| "low" \| "off"` | `"high"`        | Exit with code 1 if issues at this severity level or higher are found. Use `"off"` to disable. |
-| `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `null`          | Only report issues at this severity level or higher. If not set, all issues are reported.      |
+| `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.      |
 | `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.      |
-| `cacheDir`               | string                                               | System temp dir | Directory to cache downloaded packages for diffing. Defaults to OS temp directory.             |
+| `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                            |
 | `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                        |
 
 ### NPM Registry Configuration
@@ -258,6 +271,33 @@ The CLI flag can be combined with configuration file settings. Both will be merg
 
 ## Analyzers
 
+### Common Analyzer Options
+
+All analyzers support the following common configuration options:
+
+| Property   | Type                                        | Default     | Description                                                                                     |
+| ---------- | ------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| `enabled`  | boolean                                     | `true`      | Enable or disable the analyzer.                                                                 |
+| `severity` | `"critical" \| "high" \| "medium" \| "low"` | (per-issue) | Override severity for all issues from this analyzer. If not set, each issue uses its own level. |
+
+Example:
+
+```json
+{
+  "analyzers": {
+    "minified": {
+      "enabled": true,
+      "severity": "low"
+    },
+    "secrets": {
+      "severity": "critical"
+    }
+  }
+}
+```
+
+### Analyzer Reference
+
 | Analyzer      | Description                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------------ |
 | `cve`         | Checks packages against OSV.dev database for known CVEs and security advisories. Configurable timeout. |
@@ -314,11 +354,6 @@ You can customize these thresholds to match your organization's security policie
 | `criticalThreshold` | number  | `9.0`   | Minimum CVSS score to classify as critical (0-10). |
 | `highThreshold`     | number  | `7.0`   | Minimum CVSS score to classify as high (0-10).     |
 | `mediumThreshold`   | number  | `4.0`   | Minimum CVSS score to classify as medium (0-10).   |
-
-| Property  | Type    | Default | Description                                              |
-| --------- | ------- | ------- | -------------------------------------------------------- |
-| `enabled` | boolean | `true`  | Enable/disable CVE scanning.                             |
-| `timeout` | number  | `5000`  | Request timeout in milliseconds for OSV.dev API queries. |
 
 **Note**: CVE scanning requires network access to `api.osv.dev`. Queries are made per package version and failures are silently ignored to avoid blocking analysis on network issues.
 
@@ -496,6 +531,53 @@ The `reputation` analyzer can be configured to whitelist specific users (such as
 ```
 
 This is useful for allowing packages published by bots like GitHub Actions, Renovate, or Release Please to bypass reputation checks.
+
+## Supported Platforms
+
+Depspector provides pre-built native binaries for the following platforms:
+
+| Platform            | Architecture |
+| ------------------- | ------------ |
+| macOS               | x64, ARM64   |
+| Linux (glibc)       | x64, ARM64   |
+| Linux (musl/Alpine) | x64          |
+| Windows             | x64          |
+
+## Building from Source
+
+If you need to build Depspector from source:
+
+### Prerequisites
+
+- [Rust](https://rustup.rs/) (latest stable)
+- [Node.js](https://nodejs.org/) 18+
+- npm
+
+### Build Commands
+
+```bash
+# Clone the repository
+git clone https://github.com/drodil/depspector.git
+cd depspector
+
+# Install dependencies
+npm install
+
+# Build native binary (release)
+npm run build
+
+# Build native binary (debug)
+npm run build:debug
+
+# Run Rust tests
+cargo test
+
+# Run Clippy linter
+cargo clippy -- -D warnings
+
+# Format code
+cargo fmt
+```
 
 ## Contributing
 

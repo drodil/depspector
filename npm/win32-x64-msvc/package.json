@@ -1,0 +1,20 @@
+{
+  "name": "@drodil/depspector-win32-x64-msvc",
+  "version": "0.0.3",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "main": "depspector.win32-x64-msvc.node",
+  "files": ["depspector.win32-x64-msvc.node"],
+  "description": "x86_64-pc-windows-msvc binary for depspector",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drodil/depspector.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

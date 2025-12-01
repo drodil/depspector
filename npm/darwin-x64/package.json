@@ -1,0 +1,20 @@
+{
+  "name": "@drodil/depspector-darwin-x64",
+  "version": "0.0.3",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "main": "depspector.darwin-x64.node",
+  "files": ["depspector.darwin-x64.node"],
+  "description": "x86_64-apple-darwin binary for depspector",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drodil/depspector.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@drodil/depspector-linux-x64-musl",
+  "version": "0.0.3",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "main": "depspector.linux-x64-musl.node",
+  "files": ["depspector.linux-x64-musl.node"],
+  "description": "x86_64-unknown-linux-musl binary for depspector",
+  "license": "MIT",
+  "engines": {
+    "node": ">= 14"
+  },
+  "libc": ["musl"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drodil/depspector.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

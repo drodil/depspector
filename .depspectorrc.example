@@ -12,7 +12,9 @@
     "reputation": {
       "enabled": true,
       "whitelistedUsers": ["github-actions[bot]", "renovate[bot]"]
-    }
+    },
+    "minified": { "enabled": true, "severity": "low" },
+    "secrets": { "severity": "critical" }
   },
   "exclude": [],
   "exitWithFailureOnLevel": "high",
