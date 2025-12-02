@@ -17,7 +17,6 @@ impl FileAnalyzer for BufferAnalyzer {
   }
 
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
-    // Quick check - skip if no Buffer pattern found
     if !context.source.contains("Buffer.") {
       return vec![];
     }
@@ -28,7 +27,6 @@ impl FileAnalyzer for BufferAnalyzer {
     let min_length = config.and_then(|c| c.min_buffer_length).unwrap_or(100);
 
     for (line_num, line) in context.source.lines().enumerate() {
-      // Optimization: Skip lines that don't contain "Buffer."
       if !line.contains("Buffer.") {
         continue;
       }

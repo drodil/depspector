@@ -133,9 +133,39 @@ pub struct AssignInfo {
 
 #[derive(Debug, Clone)]
 pub enum AssignTarget {
-  Property { object: String, property: String },
-  ComputedProperty { object: String, property: String },
+  /// Simple variable assignment like `const x = "value"` or `let x = "value"`
+  Variable {
+    name: String,
+    value: Option<AssignValue>,
+  },
+  Property {
+    object: String,
+    property: String,
+  },
+  ComputedProperty {
+    object: String,
+    property: String,
+  },
   Other,
+}
+
+/// The value being assigned (for simple cases we can track)
+#[derive(Debug, Clone)]
+pub enum AssignValue {
+  /// A string literal value
+  StringLiteral(String),
+  /// A template literal (may have interpolations)
+  TemplateLiteral(String),
+  /// A number literal
+  Number(String),
+  /// A boolean literal
+  Boolean(bool),
+  /// Reference to another variable
+  Identifier(String),
+  /// Binary expression (e.g., string concatenation)
+  BinaryExpr { left: Box<AssignValue>, op: String, right: Box<AssignValue> },
+  /// Object literal with string properties
+  ObjectLiteral(Vec<(String, AssignValue)>),
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +191,8 @@ pub struct ParsedAst {
   pub assignments: Vec<AssignInfo>,
   pub destructures: Vec<DestructureInfo>,
   pub string_literals: Vec<StringLiteralInfo>,
+  /// Pre-built variable map for data flow analysis
+  pub variable_map: VariableMap,
 }
 
 impl ParsedAst {
@@ -201,6 +233,9 @@ impl ParsedAst {
     let root_node = tree.root_node();
     extract_all_events(root_node, code.as_bytes(), &mut parsed);
 
+    // Build the variable map once after extracting all assignments
+    parsed.variable_map = parsed.build_variable_map_internal();
+
     let elapsed = start.elapsed();
     if log::log_enabled!(log::Level::Debug) {
       let count = AST_NODE_COUNTER.with(|c| c.load(Ordering::Relaxed));
@@ -214,6 +249,133 @@ impl ParsedAst {
     }
 
     Some(parsed)
+  }
+
+  /// Build a map of variable names to their string values.
+  /// This enables simple data flow analysis to resolve identifiers in function calls.
+  fn build_variable_map_internal(&self) -> VariableMap {
+    let mut var_map = std::collections::HashMap::new();
+    let mut obj_map: std::collections::HashMap<String, Vec<(String, String)>> =
+      std::collections::HashMap::new();
+
+    for assign in &self.assignments {
+      match &assign.target {
+        AssignTarget::Variable { name, value: Some(value) } => {
+          if let Some(resolved) = self.resolve_assign_value(value, &var_map) {
+            var_map.insert(name.clone(), resolved);
+          }
+          // Also track object literals for property access
+          if let AssignValue::ObjectLiteral(props) = value {
+            let mut resolved_props = Vec::new();
+            for (key, val) in props {
+              if let Some(resolved) = self.resolve_assign_value(val, &var_map) {
+                resolved_props.push((key.clone(), resolved));
+              }
+            }
+            if !resolved_props.is_empty() {
+              obj_map.insert(name.clone(), resolved_props);
+            }
+          }
+        }
+        AssignTarget::Property { object, property: _ } => {
+          // Track obj.prop = "value" assignments
+          if let Some(AssignTarget::Variable { value: Some(value), .. }) = self
+            .assignments
+            .iter()
+            .find(|a| matches!(&a.target, AssignTarget::Variable { name, .. } if name == object))
+            .map(|a| &a.target)
+          {
+            // Object exists, ignore for now - we track at declaration time
+            let _ = value;
+          }
+        }
+        _ => {}
+      }
+    }
+
+    VariableMap { var_map, obj_map }
+  }
+
+  /// Resolve an AssignValue to a string
+  fn resolve_assign_value(
+    &self,
+    value: &AssignValue,
+    current_map: &std::collections::HashMap<String, String>,
+  ) -> Option<String> {
+    match value {
+      AssignValue::StringLiteral(s) => Some(s.clone()),
+      AssignValue::TemplateLiteral(s) => Some(self.resolve_template_interpolations(s, current_map)),
+      AssignValue::Identifier(other_var) => current_map.get(other_var).cloned(),
+      AssignValue::BinaryExpr { left, op, right } if op == "+" => {
+        let left_val = self.resolve_assign_value(left, current_map)?;
+        let right_val = self.resolve_assign_value(right, current_map)?;
+        Some(format!("{}{}", left_val, right_val))
+      }
+      _ => None,
+    }
+  }
+
+  /// Resolve simple ${var} interpolations in template literals
+  fn resolve_template_interpolations(
+    &self,
+    template: &str,
+    current_map: &std::collections::HashMap<String, String>,
+  ) -> String {
+    use regex::Regex;
+    lazy_static::lazy_static! {
+      static ref INTERPOLATION_RE: Regex = Regex::new(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}").unwrap();
+    }
+
+    let mut result = template.to_string();
+    for cap in INTERPOLATION_RE.captures_iter(template) {
+      let full_match = &cap[0];
+      let var_name = &cap[1];
+      if let Some(value) = current_map.get(var_name) {
+        result = result.replace(full_match, value);
+      }
+    }
+    result
+  }
+}
+
+/// A map of variable names to their resolved string values.
+/// Used for simple intra-file data flow analysis.
+#[derive(Debug, Clone, Default)]
+pub struct VariableMap {
+  var_map: std::collections::HashMap<String, String>,
+  obj_map: std::collections::HashMap<String, Vec<(String, String)>>,
+}
+
+impl VariableMap {
+  /// Resolve an ArgInfo to a string value if possible.
+  /// Returns the resolved value for StringLiteral, TemplateLiteral, Identifier, or MemberExpr (if in map).
+  pub fn resolve_arg(&self, arg: &ArgInfo) -> Option<String> {
+    match arg {
+      ArgInfo::StringLiteral(s) | ArgInfo::TemplateLiteral(s) => Some(s.clone()),
+      ArgInfo::Identifier(name) => self.var_map.get(name).cloned(),
+      ArgInfo::MemberExpr { object, property } => {
+        // Try to resolve obj.prop access
+        if let Some(props) = self.obj_map.get(object) {
+          for (key, value) in props {
+            if key == property {
+              return Some(value.clone());
+            }
+          }
+        }
+        None
+      }
+      _ => None,
+    }
+  }
+
+  /// Check if a variable name is in the map.
+  pub fn contains(&self, name: &str) -> bool {
+    self.var_map.contains_key(name)
+  }
+
+  /// Get the value of a variable by name.
+  pub fn get(&self, name: &str) -> Option<&String> {
+    self.var_map.get(name)
   }
 }
 
@@ -534,7 +696,7 @@ fn extract_member_access(node: Node, source: &[u8]) -> Option<MemberAccessInfo> 
 }
 
 fn extract_assign_info(node: Node, source: &[u8]) -> Option<AssignInfo> {
-  let (target_node, _value_node) = match node.kind() {
+  let (target_node, value_node) = match node.kind() {
     "assignment_expression" => {
       let left = node.child_by_field_name("left")?;
       let right = node.child_by_field_name("right")?;
@@ -549,6 +711,12 @@ fn extract_assign_info(node: Node, source: &[u8]) -> Option<AssignInfo> {
   };
 
   let target = match target_node.kind() {
+    // Simple variable: const x = "value" or x = "value"
+    "identifier" => {
+      let name = node_text(target_node, source);
+      let value = extract_assign_value(value_node, source);
+      AssignTarget::Variable { name, value }
+    }
     "member_expression" | "subscript_expression" => {
       if let Some(info) = extract_member_access(target_node, source) {
         let props_len = info.properties.len();
@@ -584,6 +752,76 @@ fn extract_assign_info(node: Node, source: &[u8]) -> Option<AssignInfo> {
   };
 
   Some(AssignInfo { line: node.start_position().row + 1, target })
+}
+
+/// Extract the value from an assignment's right-hand side.
+fn extract_assign_value(node: Node, source: &[u8]) -> Option<AssignValue> {
+  match node.kind() {
+    "string" => {
+      let text = node_text(node, source);
+      // Remove quotes
+      let value = text.trim_matches(|c| c == '"' || c == '\'' || c == '`');
+      Some(AssignValue::StringLiteral(value.to_string()))
+    }
+    "template_string" => {
+      let text = node_text(node, source);
+      // Remove backticks
+      let value = text.trim_start_matches('`').trim_end_matches('`');
+      Some(AssignValue::TemplateLiteral(value.to_string()))
+    }
+    "number" => {
+      let text = node_text(node, source);
+      Some(AssignValue::Number(text))
+    }
+    "true" => Some(AssignValue::Boolean(true)),
+    "false" => Some(AssignValue::Boolean(false)),
+    "identifier" => {
+      let name = node_text(node, source);
+      Some(AssignValue::Identifier(name))
+    }
+    "binary_expression" => {
+      let left = node.child_by_field_name("left")?;
+      let right = node.child_by_field_name("right")?;
+      let op =
+        node.child_by_field_name("operator").map(|n| node_text(n, source)).unwrap_or_default();
+
+      let left_val = extract_assign_value(left, source)?;
+      let right_val = extract_assign_value(right, source)?;
+
+      Some(AssignValue::BinaryExpr { left: Box::new(left_val), op, right: Box::new(right_val) })
+    }
+    "object" => {
+      let mut props = Vec::new();
+      let mut cursor = node.walk();
+
+      for child in node.children(&mut cursor) {
+        if child.kind() == "pair" {
+          if let (Some(key_node), Some(value_node)) =
+            (child.child_by_field_name("key"), child.child_by_field_name("value"))
+          {
+            let key = match key_node.kind() {
+              "property_identifier" | "string" => {
+                let k = node_text(key_node, source);
+                k.trim_matches(|c| c == '"' || c == '\'').to_string()
+              }
+              _ => continue,
+            };
+
+            if let Some(val) = extract_assign_value(value_node, source) {
+              props.push((key, val));
+            }
+          }
+        }
+      }
+
+      if props.is_empty() {
+        None
+      } else {
+        Some(AssignValue::ObjectLiteral(props))
+      }
+    }
+    _ => None,
+  }
 }
 
 fn extract_destructure_bindings(node: Node, source: &[u8]) -> Vec<String> {
@@ -746,5 +984,143 @@ mod tests {
     assert!(!visitor.calls.is_empty());
     assert!(!visitor.strings.is_empty());
     assert!(!visitor.members.is_empty());
+  }
+
+  #[test]
+  fn test_variable_map_simple_string() {
+    let code = r#"
+      const path = '/etc/passwd';
+      fs.readFile(path);
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("path"), Some(&"/etc/passwd".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_template_literal() {
+    let code = r#"
+      const url = `http://example.com`;
+      fetch(url);
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("url"), Some(&"http://example.com".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_resolve_arg() {
+    let code = r#"
+      const target = '/etc/shadow';
+      const x = target;
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    // Direct resolve
+    let arg = ArgInfo::Identifier("target".to_string());
+    assert_eq!(parsed.variable_map.resolve_arg(&arg), Some("/etc/shadow".to_string()));
+
+    // String literal passthrough
+    let arg2 = ArgInfo::StringLiteral("/etc/passwd".to_string());
+    assert_eq!(parsed.variable_map.resolve_arg(&arg2), Some("/etc/passwd".to_string()));
+
+    // Unknown variable
+    let arg3 = ArgInfo::Identifier("unknown".to_string());
+    assert_eq!(parsed.variable_map.resolve_arg(&arg3), None);
+  }
+
+  #[test]
+  fn test_variable_map_transitive() {
+    let code = r#"
+      const a = '/etc/passwd';
+      const b = a;
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    // b should resolve to /etc/passwd through a
+    assert_eq!(parsed.variable_map.get("b"), Some(&"/etc/passwd".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_let_assignment() {
+    let code = r#"
+      let path;
+      path = '/etc/passwd';
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("path"), Some(&"/etc/passwd".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_template_interpolation() {
+    let code = r#"
+      const base = '/etc';
+      const path = `${base}/passwd`;
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("path"), Some(&"/etc/passwd".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_multiple_interpolations() {
+    let code = r#"
+      const host = 'example.com';
+      const path = '/api';
+      const url = `https://${host}${path}`;
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("url"), Some(&"https://example.com/api".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_string_concatenation() {
+    let code = r#"
+      const path = '/etc' + '/passwd';
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("path"), Some(&"/etc/passwd".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_concat_with_variable() {
+    let code = r#"
+      const base = '/etc';
+      const path = base + '/passwd';
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("path"), Some(&"/etc/passwd".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_object_property() {
+    let code = r#"
+      const config = { path: '/etc/passwd', host: 'localhost' };
+      fs.readFile(config.path);
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    // Test direct property lookup
+    let arg = ArgInfo::MemberExpr { object: "config".to_string(), property: "path".to_string() };
+    assert_eq!(parsed.variable_map.resolve_arg(&arg), Some("/etc/passwd".to_string()));
+
+    let arg2 = ArgInfo::MemberExpr { object: "config".to_string(), property: "host".to_string() };
+    assert_eq!(parsed.variable_map.resolve_arg(&arg2), Some("localhost".to_string()));
+  }
+
+  #[test]
+  fn test_variable_map_nested_concat() {
+    let code = r#"
+      const a = '/etc';
+      const b = a + '/';
+      const c = b + 'passwd';
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert_eq!(parsed.variable_map.get("c"), Some(&"/etc/passwd".to_string()));
   }
 }

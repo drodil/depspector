@@ -1,7 +1,7 @@
 use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
-use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest};
+use crate::ast::{walk_ast_filtered, AstVisitor, CallInfo, NodeInterest, VariableMap};
 use crate::util::{generate_issue_id, LineIndex};
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
@@ -75,6 +75,7 @@ struct FsVisitor<'a> {
   file_path: &'a str,
   line_index: LineIndex,
   dangerous_paths: Vec<&'a str>,
+  variable_map: VariableMap,
 }
 
 impl FsVisitor<'_> {
@@ -89,9 +90,10 @@ impl AstVisitor for FsVisitor<'_> {
 
     if let (Some(ref callee), Some(ref object)) = (&call.callee_name, &call.object_name) {
       if object == "fs" || object == "promises" {
+        // Check first argument for dangerous path (resolve variables if possible)
         if !call.arguments.is_empty() {
-          if let ArgInfo::StringLiteral(path) = &call.arguments[0] {
-            if self.check_dangerous_path(path) {
+          if let Some(path) = self.variable_map.resolve_arg(&call.arguments[0]) {
+            if self.check_dangerous_path(&path) {
               let message = format!("Suspicious file access detected: {}", path);
 
               let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
@@ -174,12 +176,16 @@ impl FileAnalyzer for FsAnalyzer {
       dangerous_paths.push(path.as_str());
     }
 
+    // Use pre-built variable map from ParsedAst for resolving identifier arguments
+    let variable_map = context.parsed_ast.map(|ast| ast.variable_map.clone()).unwrap_or_default();
+
     let mut visitor = FsVisitor {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
       line_index: LineIndex::new(context.source),
       dangerous_paths,
+      variable_map,
     };
 
     let interest = NodeInterest::none().with_calls().with_string_literals();
@@ -329,5 +335,148 @@ mod tests {
     let dangerous_issues: Vec<_> =
       issues.iter().filter(|i| i.message.contains("Suspicious")).collect();
     assert!(dangerous_issues.is_empty());
+  }
+
+  #[test]
+  fn test_detects_dangerous_path_via_variable() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = FsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"
+      const path = '/etc/passwd';
+      fs.readFile(path, callback);
+    "#;
+
+    let parsed = ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: parsed.as_ref(),
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should detect /etc/passwd via variable");
+    assert_eq!(issues[0].severity, Severity::High);
+    assert!(issues[0].message.contains("/etc/passwd"));
+  }
+
+  #[test]
+  fn test_detects_transitive_variable() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = FsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"
+      const secretPath = '/etc/shadow';
+      const target = secretPath;
+      fs.readFileSync(target);
+    "#;
+
+    let parsed = ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: parsed.as_ref(),
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should detect /etc/shadow via transitive variable");
+    assert!(issues[0].message.contains("/etc/shadow"));
+  }
+
+  #[test]
+  fn test_detects_template_interpolation() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = FsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"
+      const base = '/etc';
+      const path = `${base}/passwd`;
+      fs.readFile(path);
+    "#;
+
+    let parsed = ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: parsed.as_ref(),
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should detect /etc/passwd via template interpolation");
+    assert!(issues[0].message.contains("/etc/passwd"));
+  }
+
+  #[test]
+  fn test_detects_string_concatenation() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = FsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"
+      const path = '/etc' + '/passwd';
+      fs.readFile(path);
+    "#;
+
+    let parsed = ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: parsed.as_ref(),
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should detect /etc/passwd via string concatenation");
+    assert!(issues[0].message.contains("/etc/passwd"));
+  }
+
+  #[test]
+  fn test_detects_object_property() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = FsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"
+      const config = { secretPath: '/etc/passwd' };
+      fs.readFile(config.secretPath);
+    "#;
+
+    let parsed = ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: parsed.as_ref(),
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should detect /etc/passwd via object property");
+    assert!(issues[0].message.contains("/etc/passwd"));
   }
 }

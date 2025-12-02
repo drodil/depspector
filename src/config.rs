@@ -67,6 +67,8 @@ pub struct AnalyzerConfig {
   #[serde(default)]
   pub allowed_scripts: Option<Vec<String>>,
   #[serde(default)]
+  pub allowed_commands: Option<Vec<String>>,
+  #[serde(default)]
   pub popular_packages: Option<Vec<String>>,
 }
 

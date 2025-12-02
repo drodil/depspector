@@ -1,7 +1,7 @@
 use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
-use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest};
+use crate::ast::{walk_ast_filtered, AstVisitor, CallInfo, NodeInterest, VariableMap};
 use crate::util::{generate_issue_id, LineIndex};
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
@@ -63,6 +63,7 @@ struct NetworkVisitor<'a> {
   file_path: &'a str,
   line_index: LineIndex,
   allowed_hosts: Vec<String>,
+  variable_map: VariableMap,
 }
 
 impl NetworkVisitor<'_> {
@@ -97,13 +98,14 @@ impl AstVisitor for NetworkVisitor<'_> {
 
     if let Some(ref callee) = call.callee_name {
       if NETWORK_FUNCTIONS.contains(&callee.as_str()) && !call.arguments.is_empty() {
-        if let ArgInfo::StringLiteral(url) = &call.arguments[0] {
+        // Resolve the URL argument (handles string literals, template literals, and variables)
+        if let Some(url) = self.variable_map.resolve_arg(&call.arguments[0]) {
           if url.starts_with("http://")
             || url.starts_with("https://")
             || url.starts_with("ws://")
             || url.starts_with("wss://")
           {
-            self.check_url_string(url, line);
+            self.check_url_string(&url, line);
           }
         }
       }
@@ -186,12 +188,16 @@ impl FileAnalyzer for NetworkAnalyzer {
       .and_then(|c| c.allowed_hosts.clone())
       .unwrap_or_else(|| DEFAULT_ALLOWED_HOSTS.iter().map(|s| s.to_string()).collect());
 
+    // Use pre-built variable map from ParsedAst for resolving identifier arguments
+    let variable_map = context.parsed_ast.map(|ast| ast.variable_map.clone()).unwrap_or_default();
+
     let mut visitor = NetworkVisitor {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
       line_index: LineIndex::new(context.source),
       allowed_hosts,
+      variable_map,
     };
 
     let interest = NodeInterest::none().with_calls();
@@ -342,5 +348,60 @@ mod tests {
     let socket_issues: Vec<_> =
       issues.iter().filter(|i| i.message.contains("Socket connection")).collect();
     assert!(!socket_issues.is_empty());
+  }
+
+  #[test]
+  fn test_detects_url_via_variable() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = NetworkAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"
+      const endpoint = 'https://malicious.example.com/data';
+      fetch(endpoint);
+    "#;
+
+    let parsed = ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: parsed.as_ref(),
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(!issues.is_empty(), "Should detect HTTP request via variable");
+  }
+
+  #[test]
+  fn test_detects_url_via_template_interpolation() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = NetworkAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"
+      const host = 'evil.example.com';
+      const url = `https://${host}/api`;
+      fetch(url);
+    "#;
+
+    let parsed = ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: parsed.as_ref(),
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(!issues.is_empty(), "Should detect HTTP request via template interpolation");
   }
 }
