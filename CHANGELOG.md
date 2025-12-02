@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.8](https://github.com/drodil/depspector/compare/v0.0.7...v0.0.8) (2025-12-02)
+
+
+### Features
+
+* add network/env defaults ([bc2b832](https://github.com/drodil/depspector/commit/bc2b8321c7e3007d7e61a7b4388cb317525f70fd))
+* benchmark + performance improvements ([8886882](https://github.com/drodil/depspector/commit/8886882dcb35c2cee85711e29ccc2680f87de980))
+* benchmarks and analyzer improvements ([5715b44](https://github.com/drodil/depspector/commit/5715b44c0ad822e6e6b1ec89c45893f7f4850854))
+* dynamic severity levels ([cfcf3e8](https://github.com/drodil/depspector/commit/cfcf3e8f1c845d0d2fcc025edb6dd22ed90330c2))
+* more performance improvements ([804f58d](https://github.com/drodil/depspector/commit/804f58d67e26bc72817d36183574900b0b48c594))
+
+
+### Bug Fixes
+
+* report file names ([9f40c3f](https://github.com/drodil/depspector/commit/9f40c3f7aa2e4cf3a3a8c65f766271adbba43bcc))
+
 ### [0.0.7](https://github.com/drodil/depspector/compare/v0.0.6...v0.0.7) (2025-12-02)
 
 
