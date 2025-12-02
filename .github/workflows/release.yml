@@ -100,7 +100,7 @@ jobs:
           cache: npm
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@nightly
         if: ${{ !matrix.settings.docker }}
         with:
           targets: ${{ matrix.settings.target }}
