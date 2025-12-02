@@ -13,6 +13,8 @@ export default [
       "tests/fixtures/**",
       "*.config.js",
       ".cache/**",
+      "index.js",
+      "index.d.ts",
     ],
   },
   {

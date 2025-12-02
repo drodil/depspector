@@ -46,7 +46,7 @@ describe("Native bindings", () => {
     ];
 
     const hasNativeModule = possiblePaths.some((p) =>
-      existsSync(join(__dirname, "..", p))
+      existsSync(join(__dirname, "..", p)),
     );
 
     if (!hasNativeModule) {
@@ -71,7 +71,7 @@ describe("E2E Analysis", () => {
       JSON.stringify({
         name: "test-package",
         version: "1.0.0",
-      })
+      }),
     );
 
     writeFileSync(
@@ -79,7 +79,7 @@ describe("E2E Analysis", () => {
       `
 const secret = "AKIAIOSFODNN7EXAMPLE";
 eval("console.log('hello')");
-`
+`,
     );
   });
 
@@ -124,7 +124,7 @@ eval("console.log('hello')");
       JSON.stringify({
         name: "clean-package",
         version: "1.0.0",
-      })
+      }),
     );
 
     writeFileSync(
@@ -134,7 +134,7 @@ function greet(name) {
   return "Hello, " + name;
 }
 module.exports = { greet };
-`
+`,
     );
 
     const { stdout, stderr } = invokeCli([
@@ -148,7 +148,7 @@ module.exports = { greet };
     const output = stdout + stderr;
     const lines = output.split("\n");
     const cleanPkgIssues = lines.filter(
-      (l) => l.includes("clean-package") && l.includes("CRITICAL")
+      (l) => l.includes("clean-package") && l.includes("CRITICAL"),
     );
     expect(cleanPkgIssues.length).toBe(0);
   });
@@ -178,12 +178,12 @@ module.exports = { greet };
 
     writeFileSync(
       join(parentPkgDir, "package.json"),
-      JSON.stringify({ name: "parent-package", version: "1.0.0" })
+      JSON.stringify({ name: "parent-package", version: "1.0.0" }),
     );
 
     writeFileSync(
       join(nestedPkgDir, "package.json"),
-      JSON.stringify({ name: "nested-package", version: "1.0.0" })
+      JSON.stringify({ name: "nested-package", version: "1.0.0" }),
     );
 
     writeFileSync(join(nestedPkgDir, "index.js"), 'eval("nested evil");');
@@ -207,7 +207,7 @@ module.exports = { greet };
 
     writeFileSync(
       join(multiIssuePkgDir, "package.json"),
-      JSON.stringify({ name: "multi-issue-package", version: "1.0.0" })
+      JSON.stringify({ name: "multi-issue-package", version: "1.0.0" }),
     );
 
     writeFileSync(
@@ -215,7 +215,7 @@ module.exports = { greet };
       `
       const token = "AKIAIOSFODNN7EXAMPLE";
       eval("console.log('evil')");
-      `
+      `,
     );
 
     const { stdout, stderr } = invokeCli([
@@ -246,14 +246,14 @@ describe("CLI Options", () => {
       JSON.stringify({
         name: "option-test",
         version: "1.0.0",
-      })
+      }),
     );
 
     writeFileSync(
       join(testPackageDir, "index.js"),
       `
 const x = process.env.API_KEY;
-`
+`,
     );
   });
 

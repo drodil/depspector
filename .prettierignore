@@ -1,0 +1,17 @@
+# Generated files
+index.js
+index.d.ts
+package-lock.json
+
+# Platform-specific npm packages
+npm/
+
+# Build artifacts
+target/
+*.node
+
+# Dependencies
+node_modules/
+
+# Changelog
+CHANGELOG.md

