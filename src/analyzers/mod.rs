@@ -352,14 +352,20 @@ impl Analyzer {
 
     // Parse AST once if needed, share across all analyzers
     let parsed_ast = if needs_ast {
-      let ast_start = std::time::Instant::now();
-      let result = crate::ast::ParsedAst::parse_with_timeout(source, config.ast_timeout_ms);
-      if let Some(b) = benchmark {
-        if result.is_some() {
-          b.record_ast_parse(&file_path.to_string_lossy(), ast_start.elapsed(), file_size);
+      // Optimization: Skip AST parsing for minified files
+      if crate::util::is_minified(source) {
+        log::debug!("Skipping AST parsing for minified file: {}", file_path.display());
+        None
+      } else {
+        let ast_start = std::time::Instant::now();
+        let result = crate::ast::ParsedAst::parse_with_timeout(source, config.ast_timeout_ms);
+        if let Some(b) = benchmark {
+          if result.is_some() {
+            b.record_ast_parse(&file_path.to_string_lossy(), ast_start.elapsed(), file_size);
+          }
         }
+        result
       }
-      result
     } else {
       None
     };
@@ -481,7 +487,7 @@ impl Analyzer {
 
     let mut analyzed: Vec<AnalysisResult> = stream::iter(work_items)
       .map(|wi| self.analyze_single_package(wi, ctx, prefetched.clone()))
-      .buffer_unordered(ctx.concurrency)
+      .buffer_unordered(std::cmp::max(50, ctx.concurrency))
       .collect()
       .await;
 

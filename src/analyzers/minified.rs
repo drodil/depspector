@@ -15,17 +15,14 @@ impl FileAnalyzer for MinifiedAnalyzer {
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
     let mut issues = vec![];
 
-    let lines: Vec<&str> = context.source.lines().collect();
-
-    let long_lines: Vec<(usize, &str)> = lines
-      .iter()
+    // Check for long lines without allocating a vector of all lines
+    if let Some((line_num, line)) = context
+      .source
+      .lines()
       .enumerate()
-      .filter(|(_, line)| line.len() > MIN_LONG_LINE_LENGTH)
-      .map(|(i, line)| (i + 1, *line))
-      .collect();
-
-    if !long_lines.is_empty() {
-      let (line_num, line) = long_lines[0];
+      .map(|(i, line)| (i + 1, line))
+      .find(|(_, line)| line.len() > MIN_LONG_LINE_LENGTH)
+    {
       let message = format!(
         "File contains very long lines ({} chars). It might be minified or obfuscated.",
         line.len()

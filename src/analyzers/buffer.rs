@@ -28,6 +28,10 @@ impl FileAnalyzer for BufferAnalyzer {
     let min_length = config.and_then(|c| c.min_buffer_length).unwrap_or(100);
 
     for (line_num, line) in context.source.lines().enumerate() {
+      // Optimization: Skip lines that don't contain "Buffer."
+      if !line.contains("Buffer.") {
+        continue;
+      }
       for cap in BUFFER_PATTERN.captures_iter(line) {
         if let Some(data) = cap.get(2) {
           let data_str = data.as_str();

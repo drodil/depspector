@@ -4,6 +4,8 @@ use regex::Regex;
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 use crate::util::generate_issue_id;
 
+use regex::RegexSet;
+
 lazy_static! {
     static ref AWS_ACCESS_KEY: Regex = Regex::new(
         r#"AKIA[0-9A-Z]{16}"#
@@ -48,6 +50,19 @@ lazy_static! {
     static ref TWILIO_KEY: Regex = Regex::new(
         r#"SK[0-9a-fA-F]{32}"#
     ).unwrap();
+
+    static ref SECRETS_SET: RegexSet = RegexSet::new(&[
+        r#"AKIA[0-9A-Z]{16}"#, // 0: AWS
+        r#"-----BEGIN RSA PRIVATE KEY-----"#, // 1: RSA
+        r#"-----BEGIN (?:EC |DSA |OPENSSH )?PRIVATE KEY-----"#, // 2: Private Key
+        r#"sk_live_[0-9a-zA-Z]{24,}"#, // 3: Stripe
+        r#"gh[pousr]_[A-Za-z0-9_]{36,}"#, // 4: GitHub
+        r#"npm_[A-Za-z0-9]{36,}"#, // 5: NPM
+        r#"xox[baprs]-[0-9]{10,12}-[0-9]{10,12}-[a-zA-Z0-9]{24}"#, // 6: Slack
+        r#"AIza[0-9A-Za-z\-_]{35}"#, // 7: Google
+        r#"SK[0-9a-fA-F]{32}"#, // 8: Twilio
+        r#"(?i)(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)['":\s]*[=:]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?"#, // 9: Generic
+    ]).unwrap();
 }
 
 pub struct SecretsAnalyzer;
@@ -61,7 +76,13 @@ impl FileAnalyzer for SecretsAnalyzer {
     let mut issues = vec![];
 
     for (line_num, line) in context.source.lines().enumerate() {
-      if AWS_ACCESS_KEY.is_match(line) {
+      // Use RegexSet to check if any pattern matches before running individual regexes
+      let matches = SECRETS_SET.matches(line);
+      if !matches.matched_any() {
+        continue;
+      }
+
+      if matches.matched(0) && AWS_ACCESS_KEY.is_match(line) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -72,7 +93,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if RSA_PRIVATE_KEY.is_match(line) || PRIVATE_KEY.is_match(line) {
+      if (matches.matched(1) || matches.matched(2)) && (RSA_PRIVATE_KEY.is_match(line) || PRIVATE_KEY.is_match(line)) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -83,7 +104,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if STRIPE_SECRET.is_match(line) {
+      if matches.matched(3) && STRIPE_SECRET.is_match(line) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -94,7 +115,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if GITHUB_TOKEN.is_match(line) {
+      if matches.matched(4) && GITHUB_TOKEN.is_match(line) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -105,7 +126,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if NPM_TOKEN.is_match(line) {
+      if matches.matched(5) && NPM_TOKEN.is_match(line) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -116,7 +137,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if SLACK_TOKEN.is_match(line) {
+      if matches.matched(6) && SLACK_TOKEN.is_match(line) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -127,7 +148,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if GOOGLE_API_KEY.is_match(line) {
+      if matches.matched(7) && GOOGLE_API_KEY.is_match(line) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -138,7 +159,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if TWILIO_KEY.is_match(line) {
+      if matches.matched(8) && TWILIO_KEY.is_match(line) {
         issues.push(create_issue(
           self.name(),
           context,
@@ -149,10 +170,11 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if GENERIC_API_KEY.is_match(line)
-        && !AWS_ACCESS_KEY.is_match(line)
-        && !STRIPE_SECRET.is_match(line)
-        && !GITHUB_TOKEN.is_match(line)
+      if matches.matched(9)
+        && GENERIC_API_KEY.is_match(line)
+        && !matches.matched(0) // Not AWS
+        && !matches.matched(3) // Not Stripe
+        && !matches.matched(4) // Not GitHub
       {
         issues.push(create_issue(
           self.name(),

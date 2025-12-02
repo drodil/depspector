@@ -150,7 +150,7 @@ pub struct Prefetcher {
 impl Prefetcher {
   pub fn new(npm_config: &NpmConfig) -> Self {
     let client = Client::builder()
-      .pool_max_idle_per_host(20)
+      .pool_max_idle_per_host(50)
       .pool_idle_timeout(std::time::Duration::from_secs(90))
       .timeout(std::time::Duration::from_secs(30))
       .build()

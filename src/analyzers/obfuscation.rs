@@ -76,6 +76,10 @@ impl FileAnalyzer for ObfuscationAnalyzer {
 }
 
 fn find_long_string(line: &str, min_length: usize) -> Option<&str> {
+  if line.len() < min_length {
+    return None;
+  }
+
   let mut in_string = false;
   let mut quote_char = ' ';
   let mut start = 0;
@@ -99,6 +103,11 @@ fn find_long_string(line: &str, min_length: usize) -> Option<&str> {
 
 fn contains_number_array(line: &str, min_count: usize) -> bool {
   if !line.contains('[') {
+    return false;
+  }
+
+  // Quick heuristic: if not enough commas, it can't have enough elements
+  if line.chars().filter(|&c| c == ',').count() < min_count {
     return false;
   }
 

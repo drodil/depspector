@@ -192,7 +192,7 @@ Create a `.depspectorrc` file in your project root:
 | `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.                                    |
 | `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.                                    |
 | `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                                                          |
-| `maxFileSize`            | number                                               | `1048576`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 1MB.                                   |
+| `maxFileSize`            | number                                               | `5242880`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 5MB.                                   |
 | `astTimeoutMs`           | number                                               | `0`             | Timeout in milliseconds for AST parsing per file. 0 means no timeout. Useful for skipping files that take too long to parse. |
 | `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                                                      |
 

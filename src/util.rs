@@ -105,6 +105,28 @@ pub fn is_suspicious_url(url: &str) -> bool {
   suspicious_patterns.iter().any(|p| url_lower.contains(p))
 }
 
+pub fn is_minified(source: &str) -> bool {
+  const MIN_LONG_LINE_LENGTH: usize = 1000;
+  const MIN_CODE_LENGTH: usize = 500;
+  const MAX_WHITESPACE_RATIO: f64 = 0.05;
+
+  // Check for very long lines
+  if source.lines().any(|line| line.len() > MIN_LONG_LINE_LENGTH) {
+    return true;
+  }
+
+  // Check for low whitespace ratio
+  if source.len() > MIN_CODE_LENGTH {
+    let whitespace_count = source.chars().filter(|c| c.is_whitespace()).count();
+    let ratio = whitespace_count as f64 / source.len() as f64;
+    if ratio < MAX_WHITESPACE_RATIO {
+      return true;
+    }
+  }
+
+  false
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

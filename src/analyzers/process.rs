@@ -170,32 +170,6 @@ impl AstVisitor for ProcessVisitor<'_> {
       }
     }
   }
-
-  fn visit_string_literal(&mut self, value: &str, line: usize) {
-    // Check for shell: true in spawn options
-    // This is a simple heuristic - proper detection would need object literal analysis
-    let code = self.get_code_at_line(line);
-    if code.contains("shell") && code.contains("true") {
-      let message =
-        "Process spawning with shell: true detected (command injection risk)".to_string();
-
-      let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
-
-      // Avoid duplicate issues
-      if !self.issues.iter().any(|i| i.line == line && i.message == message) {
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message,
-          severity: Severity::High,
-          code: Some(code),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-        });
-      }
-    }
-    let _ = value; // Suppress unused warning
-  }
 }
 
 impl FileAnalyzer for ProcessAnalyzer {
@@ -221,8 +195,35 @@ impl FileAnalyzer for ProcessAnalyzer {
       has_child_process_import: false,
     };
 
-    let interest = NodeInterest::none().with_calls().with_string_literals();
+    let interest = NodeInterest::none().with_calls();
     walk_ast_filtered(context.parsed_ast, context.source, &mut visitor, interest);
+
+    // Efficiently scan for shell: true
+    for (line_num, line) in context.source.lines().enumerate() {
+      if line.contains("shell") && line.contains("true") {
+         // Simple check to avoid false positives in comments/strings would be good,
+         // but for performance we stick to simple string matching for now,
+         // matching the previous behavior but much faster.
+         // To be slightly safer, we could check if it looks like a property `shell: true`
+         // or `shell:true`.
+         if line.contains("shell: true") || line.contains("shell:true") || (line.contains("shell") && line.contains("true") && line.contains("{")) {
+            let message = "Process spawning with shell: true detected (command injection risk)".to_string();
+            let id = generate_issue_id(self.name(), context.file_path.to_str().unwrap_or(""), line_num + 1, &message);
+
+            if !visitor.issues.iter().any(|i| i.line == line_num + 1 && i.message == message) {
+               visitor.issues.push(Issue {
+                  issue_type: self.name().to_string(),
+                  line: line_num + 1,
+                  message,
+                  severity: Severity::High,
+                  code: Some(line.trim().to_string()),
+                  analyzer: Some(self.name().to_string()),
+                  id: Some(id),
+               });
+            }
+         }
+      }
+    }
 
     visitor.issues
   }

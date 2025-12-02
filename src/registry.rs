@@ -64,7 +64,7 @@ pub struct Registry {
 impl Registry {
   fn build_client() -> Client {
     Client::builder()
-      .pool_max_idle_per_host(10)
+      .pool_max_idle_per_host(50)
       .pool_idle_timeout(std::time::Duration::from_secs(90))
       .timeout(std::time::Duration::from_secs(30))
       .build()
@@ -103,30 +103,49 @@ impl Registry {
 
   pub async fn get_package(&self, name: &str) -> Result<PackageMetadata> {
     let url = format!("{}/{}", self.base_url, name);
+    let max_retries = 3;
+    let mut last_error = None;
 
-    let mut request = self.client.get(&url).header("Accept", "application/json");
+    for attempt in 0..=max_retries {
+      if attempt > 0 {
+        let delay = std::time::Duration::from_millis(100 * 2_u64.pow(attempt - 1));
+        tokio::time::sleep(delay).await;
+      }
 
-    if let Some(ref auth) = self.auth_header {
-      request = request.header("Authorization", auth);
+      let mut request = self.client.get(&url).header("Accept", "application/json");
+
+      if let Some(ref auth) = self.auth_header {
+        request = request.header("Authorization", auth);
+      }
+
+      match request.send().await {
+        Ok(response) => {
+          if response.status().is_success() {
+            return response
+              .json::<PackageMetadata>()
+              .await
+              .map_err(|e| napi::Error::from_reason(format!("Failed to parse metadata: {}", e)));
+          } else if response.status().as_u16() == 404 {
+             return Err(napi::Error::from_reason(format!(
+              "Package not found: {} (status {})",
+              name,
+              response.status()
+            )));
+          } else {
+             let status = response.status();
+             last_error = Some(napi::Error::from_reason(format!("Registry request failed with status: {}", status)));
+             if status.as_u16() < 500 && status.as_u16() != 429 {
+                break;
+             }
+          }
+        }
+        Err(e) => {
+          last_error = Some(napi::Error::from_reason(format!("Registry request failed: {}", e)));
+        }
+      }
     }
 
-    let response = request
-      .send()
-      .await
-      .map_err(|e| napi::Error::from_reason(format!("Registry request failed: {}", e)))?;
-
-    if !response.status().is_success() {
-      return Err(napi::Error::from_reason(format!(
-        "Package not found: {} (status {})",
-        name,
-        response.status()
-      )));
-    }
-
-    response
-      .json::<PackageMetadata>()
-      .await
-      .map_err(|e| napi::Error::from_reason(format!("Failed to parse metadata: {}", e)))
+    Err(last_error.unwrap_or_else(|| napi::Error::from_reason("Registry request failed after retries")))
   }
 
   fn ensure_dir(path: &Path) -> std::io::Result<()> {

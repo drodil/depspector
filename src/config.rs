@@ -104,7 +104,7 @@ fn default_report_level() -> String {
 }
 
 fn default_max_file_size() -> usize {
-  1024 * 1024 // 1 MB default - larger files are skipped for AST analysis
+  5 * 1024 * 1024 // 5 MB default - larger files are skipped for AST analysis
 }
 
 impl Default for Config {
