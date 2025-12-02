@@ -59,7 +59,8 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   debug!("Working directory: {:?}", working_dir);
   debug!("node_modules path: {:?}", node_modules_path);
 
-  let analyzer = Analyzer::new(&config, cli.offline);
+  let only_analyzers = if cli.analyzer.is_empty() { None } else { Some(cli.analyzer.as_slice()) };
+  let analyzer = Analyzer::new(&config, cli.offline, only_analyzers);
   let reporter = Reporter::new();
   let cache = if cli.cache {
     Some(PackageCache::new(&config.cache_dir, &working_dir, &node_modules_path)?)
@@ -144,6 +145,8 @@ struct Cli {
   offline: bool,
   #[clap(long, num_args = 1.., help = "Issue IDs to ignore")]
   ignore_issue: Vec<String>,
+  #[clap(long, short = 'a', num_args = 1.., help = "Run only specific analyzers (e.g., --analyzer cve --analyzer deprecated)")]
+  analyzer: Vec<String>,
   #[clap(flatten)]
   verbose: Verbosity,
   #[clap(long, help = "Max concurrent package analyses (defaults to CPU cores)")]

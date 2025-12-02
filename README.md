@@ -120,7 +120,8 @@ node bin.js [options]
 - `--clear-cache`: Clear stored cache entries before scanning (use to force full regeneration while keeping caching enabled afterward).
 - `--fail-fast`: Stop analysis immediately when the first issue at or above the configured `exitWithFailureOnLevel` is found (useful for CI/CD to fail quickly).
 - `--only-new`: Show only new issues found in this scan, excluding issues from cached packages (useful for incremental analysis).
-- `--offline`: Disable analyzers that require network access (CVE, cooldown, dormant, reputation). Useful for environments without internet access or to speed up scans.
+- `--offline`: Disable analyzers that require network access (CVE, cooldown, dormant, reputation, deprecated). Useful for environments without internet access or to speed up scans.
+- `-a, --analyzer <name...>`: Run only specific analyzers (can be specified multiple times). Overrides config file settings. Example: `--analyzer cve --analyzer deprecated`.
 - `--ignore-issue <id...>`: Ignore specific issues by their ID (can be specified multiple times). Issue IDs are displayed in brackets after each finding.
 - `--concurrency <n>`: Maximum number of concurrent package analyses (defaults to number of CPU cores).
 - `--json <path>`: Output the analysis report as JSON to the specified file.
@@ -301,6 +302,7 @@ Example:
 | Analyzer      | Description                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------------ |
 | `cve`         | Checks packages against OSV.dev database for known CVEs and security advisories. Configurable timeout. |
+| `deprecated`  | Detects packages marked as deprecated in the npm registry.                                             |
 | `env`         | Detects access to environment variables (`process.env`). Supports `allowedVariables` whitelist.        |
 | `network`     | Detects network requests. Supports `allowedHosts` whitelist.                                           |
 | `eval`        | Flags `eval()` and `new Function()` usage.                                                             |

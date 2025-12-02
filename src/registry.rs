@@ -22,6 +22,8 @@ pub struct PackageVersion {
   pub dist: Option<PackageDist>,
   #[serde(default, rename = "_npmUser")]
   pub npm_user: Option<NpmUser>,
+  #[serde(default)]
+  pub deprecated: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]

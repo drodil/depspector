@@ -24,6 +24,7 @@ pub mod secrets;
 
 pub mod cooldown;
 pub mod cve;
+pub mod deprecated;
 pub mod dormant;
 pub mod native;
 pub mod reputation;
@@ -33,6 +34,7 @@ pub mod typosquat;
 pub use buffer::BufferAnalyzer;
 pub use cooldown::CooldownAnalyzer;
 pub use cve::CVEAnalyzer;
+pub use deprecated::DeprecatedAnalyzer;
 pub use dormant::DormantAnalyzer;
 pub use dynamic::DynamicAnalyzer;
 pub use env::EnvAnalyzer;
@@ -214,76 +216,108 @@ pub struct Analyzer {
   file_analyzers: Vec<Box<dyn FileAnalyzer>>,
   package_analyzers: Vec<Box<dyn PackageAnalyzer>>,
   offline: bool,
+  active_analyzers: Vec<String>,
 }
 
 impl Analyzer {
-  pub fn new(config: &Config, offline: bool) -> Self {
+  pub fn new(config: &Config, offline: bool, only_analyzers: Option<&[String]>) -> Self {
     let mut file_analyzers: Vec<Box<dyn FileAnalyzer>> = vec![];
     let mut package_analyzers: Vec<Box<dyn PackageAnalyzer>> = vec![];
+    let mut active_analyzers: Vec<String> = vec![];
 
-    if config.is_analyzer_enabled("buffer") {
+    let should_include = |name: &str| -> bool {
+      match only_analyzers {
+        Some(filter) if !filter.is_empty() => filter.iter().any(|f| f.eq_ignore_ascii_case(name)),
+        _ => config.is_analyzer_enabled(name),
+      }
+    };
+
+    if should_include("buffer") {
       file_analyzers.push(Box::new(BufferAnalyzer));
+      active_analyzers.push("buffer".to_string());
     }
-    if config.is_analyzer_enabled("dynamic") {
+    if should_include("dynamic") {
       file_analyzers.push(Box::new(DynamicAnalyzer));
+      active_analyzers.push("dynamic".to_string());
     }
-    if config.is_analyzer_enabled("env") {
+    if should_include("env") {
       file_analyzers.push(Box::new(EnvAnalyzer));
+      active_analyzers.push("env".to_string());
     }
-    if config.is_analyzer_enabled("eval") {
+    if should_include("eval") {
       file_analyzers.push(Box::new(EvalAnalyzer));
+      active_analyzers.push("eval".to_string());
     }
-    if config.is_analyzer_enabled("fs") {
+    if should_include("fs") {
       file_analyzers.push(Box::new(FsAnalyzer));
+      active_analyzers.push("fs".to_string());
     }
-    if config.is_analyzer_enabled("metadata") {
+    if should_include("metadata") {
       file_analyzers.push(Box::new(MetadataAnalyzer));
+      active_analyzers.push("metadata".to_string());
     }
-    if config.is_analyzer_enabled("minified") {
+    if should_include("minified") {
       file_analyzers.push(Box::new(MinifiedAnalyzer));
+      active_analyzers.push("minified".to_string());
     }
-    if config.is_analyzer_enabled("network") {
+    if should_include("network") {
       file_analyzers.push(Box::new(NetworkAnalyzer));
+      active_analyzers.push("network".to_string());
     }
-    if config.is_analyzer_enabled("obfuscation") {
+    if should_include("obfuscation") {
       file_analyzers.push(Box::new(ObfuscationAnalyzer));
+      active_analyzers.push("obfuscation".to_string());
     }
-    if config.is_analyzer_enabled("pollution") {
+    if should_include("pollution") {
       file_analyzers.push(Box::new(PollutionAnalyzer));
+      active_analyzers.push("pollution".to_string());
     }
-    if config.is_analyzer_enabled("process") {
+    if should_include("process") {
       file_analyzers.push(Box::new(ProcessAnalyzer));
+      active_analyzers.push("process".to_string());
     }
-    if config.is_analyzer_enabled("secrets") {
+    if should_include("secrets") {
       file_analyzers.push(Box::new(SecretsAnalyzer));
+      active_analyzers.push("secrets".to_string());
     }
 
-    if config.is_analyzer_enabled("native") {
+    if should_include("native") {
       package_analyzers.push(Box::new(NativeAnalyzer));
+      active_analyzers.push("native".to_string());
     }
-    if config.is_analyzer_enabled("scripts") {
+    if should_include("scripts") {
       package_analyzers.push(Box::new(ScriptsAnalyzer));
+      active_analyzers.push("scripts".to_string());
     }
-    if config.is_analyzer_enabled("typosquat") {
+    if should_include("typosquat") {
       package_analyzers.push(Box::new(TyposquatAnalyzer));
+      active_analyzers.push("typosquat".to_string());
     }
 
     if !offline {
-      if config.is_analyzer_enabled("cooldown") {
+      if should_include("cooldown") {
         package_analyzers.push(Box::new(CooldownAnalyzer::new()));
+        active_analyzers.push("cooldown".to_string());
       }
-      if config.is_analyzer_enabled("cve") {
+      if should_include("cve") {
         package_analyzers.push(Box::new(CVEAnalyzer::new()));
+        active_analyzers.push("cve".to_string());
       }
-      if config.is_analyzer_enabled("dormant") {
+      if should_include("deprecated") {
+        package_analyzers.push(Box::new(DeprecatedAnalyzer::new()));
+        active_analyzers.push("deprecated".to_string());
+      }
+      if should_include("dormant") {
         package_analyzers.push(Box::new(DormantAnalyzer::new()));
+        active_analyzers.push("dormant".to_string());
       }
-      if config.is_analyzer_enabled("reputation") {
+      if should_include("reputation") {
         package_analyzers.push(Box::new(ReputationAnalyzer::new()));
+        active_analyzers.push("reputation".to_string());
       }
     }
 
-    Self { file_analyzers, package_analyzers, offline }
+    Self { file_analyzers, package_analyzers, offline, active_analyzers }
   }
 
   pub fn analyze_file(&self, source: &str, file_path: &Path, config: &Config) -> Vec<Issue> {
@@ -411,12 +445,34 @@ impl Analyzer {
         if ctx.config.exclude.iter().any(|e| name.contains(e)) {
           return;
         }
+
         if let Some(cache) = ctx.cache {
           if let Some(cached) = cache.get(name, version) {
-            let mut result = cached.clone();
-            result.is_from_cache = true;
-            cached_results.lock().unwrap().push(result);
-            return;
+            let filtered_issues: Vec<_> = cached
+              .issues
+              .iter()
+              .filter(|issue| {
+                self.active_analyzers.iter().any(|a| a.eq_ignore_ascii_case(&issue.issue_type))
+              })
+              .cloned()
+              .collect();
+
+            let cached_analyzer_types: std::collections::HashSet<_> =
+              filtered_issues.iter().map(|i| i.issue_type.to_lowercase()).collect();
+
+            let missing_analyzers: Vec<_> = self
+              .active_analyzers
+              .iter()
+              .filter(|a| !cached_analyzer_types.contains(&a.to_lowercase()))
+              .collect();
+
+            if missing_analyzers.is_empty() {
+              let mut result = cached.clone();
+              result.issues = filtered_issues;
+              result.is_from_cache = true;
+              cached_results.lock().unwrap().push(result);
+              return;
+            }
           }
         }
 
@@ -586,16 +642,16 @@ mod analyzer_tests {
   #[test]
   fn test_analyzer_creation() {
     let config = Config::default();
-    let analyzer = Analyzer::new(&config, false);
+    let analyzer = Analyzer::new(&config, false, None);
 
     assert_eq!(analyzer.file_analyzer_count(), 12);
-    assert_eq!(analyzer.package_analyzer_count(), 7);
+    assert_eq!(analyzer.package_analyzer_count(), 8);
   }
 
   #[test]
   fn test_analyzer_offline_mode() {
     let config = Config::default();
-    let analyzer = Analyzer::new(&config, true);
+    let analyzer = Analyzer::new(&config, true, None);
 
     assert!(analyzer.is_offline());
     assert_eq!(analyzer.package_analyzer_count(), 3);
@@ -608,7 +664,27 @@ mod analyzer_tests {
     analyzer_config.enabled = Some(false);
     config.analyzers.insert("buffer".to_string(), analyzer_config);
 
-    let analyzer = Analyzer::new(&config, false);
+    let analyzer = Analyzer::new(&config, false, None);
     assert_eq!(analyzer.file_analyzer_count(), 11);
+  }
+
+  #[test]
+  fn test_analyzer_filter() {
+    let config = Config::default();
+    let filter = vec!["deprecated".to_string(), "cve".to_string()];
+    let analyzer = Analyzer::new(&config, false, Some(&filter));
+
+    assert_eq!(analyzer.file_analyzer_count(), 0);
+    assert_eq!(analyzer.package_analyzer_count(), 2);
+  }
+
+  #[test]
+  fn test_analyzer_filter_case_insensitive() {
+    let config = Config::default();
+    let filter = vec!["BUFFER".to_string(), "Env".to_string()];
+    let analyzer = Analyzer::new(&config, false, Some(&filter));
+
+    assert_eq!(analyzer.file_analyzer_count(), 2);
+    assert_eq!(analyzer.package_analyzer_count(), 0);
   }
 }
