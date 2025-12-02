@@ -11,6 +11,7 @@
     "binaryName": "depspector",
     "targets": [
       "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
       "x86_64-unknown-linux-gnu",
       "x86_64-unknown-linux-musl",
       "aarch64-unknown-linux-gnu",
@@ -57,12 +58,12 @@
     "vitest": "^3.2.4"
   },
   "optionalDependencies": {
-    "@depspector/darwin-arm64": "1.0.0",
-    "@depspector/darwin-x64": "1.0.0",
-    "@depspector/linux-arm64-gnu": "1.0.0",
-    "@depspector/linux-x64-gnu": "1.0.0",
-    "@depspector/linux-x64-musl": "1.0.0",
-    "@depspector/win32-x64-msvc": "1.0.0"
+    "@drodil/depspector-darwin-arm64": "0.0.5",
+    "@drodil/depspector-darwin-x64": "0.0.5",
+    "@drodil/depspector-linux-arm64-gnu": "0.0.5",
+    "@drodil/depspector-linux-x64-gnu": "0.0.5",
+    "@drodil/depspector-linux-x64-musl": "0.0.5",
+    "@drodil/depspector-win32-x64-msvc": "0.0.5"
   },
   "repository": {
     "type": "git",

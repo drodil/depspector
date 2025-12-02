@@ -219,10 +219,16 @@ jobs:
       - name: Move artifacts
         run: npm run artifacts
 
-      - name: Publish
+      - name: Publish platform packages
+        run: npm run prepublishOnly
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        continue-on-error: true
+
+      - name: Publish main package
         run: |
           npm config set provenance true
-          npm run prepublishOnly
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
