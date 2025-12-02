@@ -1,7 +1,7 @@
 use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
-use crate::ast::{try_parse_and_walk, ArgInfo, AstVisitor, CallInfo};
+use crate::ast::{walk_ast, ArgInfo, AstVisitor, CallInfo};
 use crate::util::generate_issue_id;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
@@ -9,8 +9,10 @@ use super::{FileAnalyzer, FileContext, Issue, Severity};
 const DANGEROUS_FUNCTIONS: &[&str] = &["eval", "Function", "setTimeout", "setInterval"];
 
 lazy_static! {
+  // Note: 'require' is intentionally excluded - it's in nearly every file.
+  // Dynamic require detection is triggered by the other patterns or specific contexts.
   static ref QUICK_CHECK: AhoCorasick =
-    AhoCorasick::new(["eval", "Function", "setTimeout", "setInterval", "require",]).unwrap();
+    AhoCorasick::new(["eval", "new Function", "Function(",]).unwrap();
 }
 
 pub struct EvalAnalyzer;
@@ -95,8 +97,12 @@ impl FileAnalyzer for EvalAnalyzer {
     "eval"
   }
 
+  fn uses_ast(&self) -> bool {
+    true
+  }
+
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
-    // Quick check - skip AST parsing if no dangerous patterns found
+    // Quick check - skip if no dangerous patterns found
     if !QUICK_CHECK.is_match(context.source) {
       return vec![];
     }
@@ -108,7 +114,8 @@ impl FileAnalyzer for EvalAnalyzer {
       source: context.source,
     };
 
-    try_parse_and_walk(context.source, &mut visitor);
+    walk_ast(context.parsed_ast, context.source, &mut visitor);
+
     visitor.issues
   }
 }
@@ -132,6 +139,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -153,6 +161,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -173,6 +182,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 

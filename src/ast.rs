@@ -88,12 +88,139 @@ pub struct DestructureInfo {
   pub line: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct StringLiteralInfo {
+  pub value: String,
+  pub line: usize,
+}
+
+/// Pre-extracted AST events from a single parse.
+/// This allows multiple analyzers to share the same parsed data.
+#[derive(Debug, Clone, Default)]
+pub struct ParsedAst {
+  pub calls: Vec<CallInfo>,
+  pub member_accesses: Vec<MemberAccessInfo>,
+  pub assignments: Vec<AssignInfo>,
+  pub destructures: Vec<DestructureInfo>,
+  pub string_literals: Vec<StringLiteralInfo>,
+}
+
+impl ParsedAst {
+  /// Parse source code once and extract all AST events.
+  pub fn parse(code: &str) -> Option<Self> {
+    reset_ast_counter();
+    let start = Instant::now();
+
+    let tree = PARSER.with(|parser| {
+      let mut parser = parser.borrow_mut();
+      parser.parse(code, None)
+    });
+
+    let tree = match tree {
+      Some(tree) => tree,
+      None => {
+        log::debug!("[AST] Failed to parse code");
+        return None;
+      }
+    };
+
+    let mut parsed = ParsedAst::default();
+    let root_node = tree.root_node();
+    extract_all_events(root_node, code.as_bytes(), &mut parsed);
+
+    let elapsed = start.elapsed();
+    if log::log_enabled!(log::Level::Debug) {
+      let count = AST_NODE_COUNTER.with(|c| c.load(Ordering::Relaxed));
+      log::debug!(
+        "[AST] Parsed: {count} nodes in {elapsed:?}, extracted {} calls, {} members, {} assigns, {} strings",
+        parsed.calls.len(),
+        parsed.member_accesses.len(),
+        parsed.assignments.len(),
+        parsed.string_literals.len()
+      );
+    }
+
+    Some(parsed)
+  }
+}
+
+fn extract_all_events(node: Node, source: &[u8], parsed: &mut ParsedAst) {
+  inc_ast_counter();
+
+  match node.kind() {
+    "call_expression" => {
+      if let Some(info) = extract_call_info(node, source) {
+        parsed.calls.push(info);
+      }
+    }
+    "new_expression" => {
+      if let Some(info) = extract_new_call_info(node, source) {
+        parsed.calls.push(info);
+      }
+    }
+    "member_expression" | "subscript_expression" => {
+      if let Some(info) = extract_member_access(node, source) {
+        parsed.member_accesses.push(info);
+      }
+    }
+    "assignment_expression" | "variable_declarator" => {
+      if let Some(info) = extract_assign_info(node, source) {
+        parsed.assignments.push(info);
+      }
+      if node.kind() == "variable_declarator" {
+        if let Some(destructure_info) = extract_destructure_info(node, source) {
+          parsed.destructures.push(destructure_info);
+        }
+      }
+    }
+    "string" | "template_string" => {
+      let text = node_text(node, source);
+      let cleaned = text.trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string();
+      parsed
+        .string_literals
+        .push(StringLiteralInfo { value: cleaned, line: node.start_position().row + 1 });
+    }
+    _ => {}
+  }
+
+  let mut cursor = node.walk();
+  for child in node.children(&mut cursor) {
+    extract_all_events(child, source, parsed);
+  }
+}
+
 pub trait AstVisitor {
   fn visit_call(&mut self, _info: &CallInfo) {}
   fn visit_member_access(&mut self, _info: &MemberAccessInfo) {}
   fn visit_assign(&mut self, _info: &AssignInfo) {}
   fn visit_destructure(&mut self, _info: &DestructureInfo) {}
   fn visit_string_literal(&mut self, _value: &str, _line: usize) {}
+}
+
+pub fn walk_parsed_ast<V: AstVisitor>(parsed: &ParsedAst, visitor: &mut V) {
+  for call in &parsed.calls {
+    visitor.visit_call(call);
+  }
+  for member in &parsed.member_accesses {
+    visitor.visit_member_access(member);
+  }
+  for assign in &parsed.assignments {
+    visitor.visit_assign(assign);
+  }
+  for destructure in &parsed.destructures {
+    visitor.visit_destructure(destructure);
+  }
+  for string_lit in &parsed.string_literals {
+    visitor.visit_string_literal(&string_lit.value, string_lit.line);
+  }
+}
+
+pub fn walk_ast<V: AstVisitor>(parsed_ast: Option<&ParsedAst>, source: &str, visitor: &mut V) {
+  if let Some(parsed) = parsed_ast {
+    walk_parsed_ast(parsed, visitor);
+  } else if let Some(parsed) = ParsedAst::parse(source) {
+    walk_parsed_ast(&parsed, visitor);
+  }
 }
 
 pub fn try_parse_and_walk<V: AstVisitor>(code: &str, visitor: &mut V) -> bool {

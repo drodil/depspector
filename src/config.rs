@@ -89,6 +89,8 @@ pub struct Config {
   pub npm: NpmConfig,
   #[serde(default)]
   pub analyzers: HashMap<String, AnalyzerConfig>,
+  #[serde(default = "default_max_file_size")]
+  pub max_file_size: usize,
 }
 
 fn default_cache_dir() -> String {
@@ -97,6 +99,10 @@ fn default_cache_dir() -> String {
 
 fn default_report_level() -> String {
   "low".to_string()
+}
+
+fn default_max_file_size() -> usize {
+  5 * 1024 * 1024 // 5 MB default
 }
 
 impl Default for Config {
@@ -110,6 +116,7 @@ impl Default for Config {
       fail_fast: false,
       npm: NpmConfig::default(),
       analyzers: HashMap::new(),
+      max_file_size: default_max_file_size(),
     }
   }
 }

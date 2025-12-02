@@ -1,7 +1,7 @@
 use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
-use crate::ast::{try_parse_and_walk, ArgInfo, AstVisitor, CallInfo};
+use crate::ast::{walk_ast, ArgInfo, AstVisitor, CallInfo};
 use crate::util::generate_issue_id;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
@@ -10,8 +10,23 @@ const CHILD_PROCESS_METHODS: &[&str] =
   &["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync", "fork"];
 
 lazy_static! {
-  static ref QUICK_CHECK: AhoCorasick =
-    AhoCorasick::new(["child_process", "exec", "spawn", "fork", "process.binding",]).unwrap();
+  // Patterns to detect child_process usage - includes both method calls and standalone functions
+  static ref QUICK_CHECK: AhoCorasick = AhoCorasick::new([
+    "child_process",
+    "require('child_process",
+    "require(\"child_process",
+    "from 'child_process",
+    "from \"child_process",
+    "exec(",
+    "execSync(",
+    "execFile(",
+    "execFileSync(",
+    "spawn(",
+    "spawnSync(",
+    "fork(",
+    "process.binding(",
+  ])
+  .unwrap();
 }
 
 pub struct ProcessAnalyzer;
@@ -188,8 +203,12 @@ impl FileAnalyzer for ProcessAnalyzer {
     "process"
   }
 
+  fn uses_ast(&self) -> bool {
+    true
+  }
+
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
-    // Quick check - skip AST parsing if no process-related patterns found
+    // Quick check - skip if no process-related patterns found
     if !QUICK_CHECK.is_match(context.source) {
       return vec![];
     }
@@ -202,7 +221,8 @@ impl FileAnalyzer for ProcessAnalyzer {
       has_child_process_import: false,
     };
 
-    try_parse_and_walk(context.source, &mut visitor);
+    walk_ast(context.parsed_ast, context.source, &mut visitor);
+
     visitor.issues
   }
 }
@@ -229,6 +249,7 @@ exec('ls -la', callback);
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -253,6 +274,7 @@ cp.spawn('node', ['script.js']);
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -273,6 +295,7 @@ cp.spawn('node', ['script.js']);
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -294,6 +317,7 @@ cp.spawn('node', ['script.js']);
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -315,6 +339,7 @@ cp.spawn('node', ['script.js']);
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -338,6 +363,7 @@ fs.readFileSync('package.json');
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 

@@ -90,6 +90,9 @@ npx depspector --offline
 
 # Analyze a different project directory
 npx depspector --cwd /path/to/project
+
+# Show detailed benchmark/timing information
+npx depspector --benchmark
 ```
 
 ### Development Usage
@@ -126,6 +129,7 @@ node bin.js [options]
 - `--concurrency <n>`: Maximum number of concurrent package analyses (defaults to number of CPU cores).
 - `--json <path>`: Output the analysis report as JSON to the specified file.
 - `--yaml <path>`: Output the analysis report as YAML to the specified file.
+- `--benchmark`: Show detailed timing information for each analyzer and phase. Useful for performance profiling and identifying slow analyzers.
 
 ## Performance
 
@@ -188,6 +192,7 @@ Create a `.depspectorrc` file in your project root:
 | `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.      |
 | `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.      |
 | `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                            |
+| `maxFileSize`            | number                                               | `5242880`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 5MB.     |
 | `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                        |
 
 ### NPM Registry Configuration

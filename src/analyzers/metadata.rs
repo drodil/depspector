@@ -1,7 +1,27 @@
-use crate::ast::{try_parse_and_walk, AstVisitor, CallInfo};
+use aho_corasick::AhoCorasick;
+use lazy_static::lazy_static;
+
+use crate::ast::{walk_ast, AstVisitor, CallInfo};
 use crate::util::generate_issue_id;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
+
+lazy_static! {
+  static ref QUICK_CHECK: AhoCorasick = AhoCorasick::new([
+    "os.userInfo",
+    "os.networkInterfaces",
+    "os.platform",
+    "os.hostname",
+    "os.release",
+    "os.arch",
+    "os.cpus",
+    "os.totalmem",
+    "os.freemem",
+    "os.homedir",
+    "os.tmpdir",
+  ])
+  .unwrap();
+}
 
 const SUSPICIOUS_OS_METHODS: &[&str] = &[
   "userInfo",
@@ -61,7 +81,16 @@ impl FileAnalyzer for MetadataAnalyzer {
     "metadata"
   }
 
+  fn uses_ast(&self) -> bool {
+    true
+  }
+
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
+    // Quick check - skip if no os.* method patterns found
+    if !QUICK_CHECK.is_match(context.source) {
+      return vec![];
+    }
+
     let mut visitor = MetadataVisitor {
       issues: vec![],
       analyzer_name: self.name(),
@@ -69,7 +98,8 @@ impl FileAnalyzer for MetadataAnalyzer {
       source: context.source,
     };
 
-    try_parse_and_walk(context.source, &mut visitor);
+    walk_ast(context.parsed_ast, context.source, &mut visitor);
+
     visitor.issues
   }
 }
@@ -93,6 +123,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -114,6 +145,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -135,6 +167,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -155,6 +188,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -175,6 +209,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -199,6 +234,7 @@ const platform = os.platform();
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 

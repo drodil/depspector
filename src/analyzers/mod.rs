@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::benchmark::BenchmarkCollector;
 use crate::cache::PackageCache;
 use crate::config::Config;
 use crate::prefetch::PrefetchedData;
@@ -139,6 +140,7 @@ pub struct AnalyzeContext<'a> {
   pub concurrency: usize,
   pub offline: bool,
   pub prefetched: Option<Arc<PrefetchedData>>,
+  pub benchmark: Option<BenchmarkCollector>,
 }
 
 impl<'a> AnalyzeContext<'a> {
@@ -163,11 +165,17 @@ impl<'a> AnalyzeContext<'a> {
       concurrency,
       offline,
       prefetched: None,
+      benchmark: None,
     }
   }
 
   pub fn with_prefetched(mut self, prefetched: Arc<PrefetchedData>) -> Self {
     self.prefetched = Some(prefetched);
+    self
+  }
+
+  pub fn with_benchmark(mut self, benchmark: Option<BenchmarkCollector>) -> Self {
+    self.benchmark = benchmark;
     self
   }
 }
@@ -179,12 +187,17 @@ pub struct FileContext<'a> {
   pub package_name: Option<&'a str>,
   pub package_version: Option<&'a str>,
   pub config: &'a Config,
+  pub parsed_ast: Option<&'a crate::ast::ParsedAst>,
 }
 
 pub trait FileAnalyzer: Send + Sync {
   fn name(&self) -> &'static str;
 
   fn requires_network(&self) -> bool {
+    false
+  }
+
+  fn uses_ast(&self) -> bool {
     false
   }
 
@@ -321,16 +334,60 @@ impl Analyzer {
   }
 
   pub fn analyze_file(&self, source: &str, file_path: &Path, config: &Config) -> Vec<Issue> {
-    let context =
-      FileContext { source, file_path, package_name: None, package_version: None, config };
+    self.analyze_file_with_benchmark(source, file_path, config, None)
+  }
+
+  pub fn analyze_file_with_benchmark(
+    &self,
+    source: &str,
+    file_path: &Path,
+    config: &Config,
+    benchmark: Option<&BenchmarkCollector>,
+  ) -> Vec<Issue> {
+    let file_size = source.len();
+    let max_file_size = config.max_file_size;
+
+    // Check if any AST analyzer will run on this file
+    let needs_ast = file_size <= max_file_size && self.file_analyzers.iter().any(|a| a.uses_ast());
+
+    // Parse AST once if needed, share across all analyzers
+    let parsed_ast = if needs_ast { crate::ast::ParsedAst::parse(source) } else { None };
+
+    let context = FileContext {
+      source,
+      file_path,
+      package_name: None,
+      package_version: None,
+      config,
+      parsed_ast: parsed_ast.as_ref(),
+    };
 
     self
       .file_analyzers
       .iter()
+      .filter(|a| {
+        if a.uses_ast() && file_size > max_file_size {
+          log::debug!(
+            "Skipping AST analyzer '{}' for large file: {} ({} bytes > {} limit)",
+            a.name(),
+            file_path.display(),
+            file_size,
+            max_file_size
+          );
+          return false;
+        }
+        true
+      })
       .flat_map(|a| {
+        let start = std::time::Instant::now();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| a.analyze(&context)));
         match result {
-          Ok(issues) => apply_severity_override(issues, a.name(), config),
+          Ok(issues) => {
+            if let Some(b) = benchmark {
+              b.record_analyzer(a.name(), start.elapsed(), issues.len());
+            }
+            apply_severity_override(issues, a.name(), config)
+          }
           Err(_) => {
             log::warn!("Analyzer '{}' panicked on file: {}", a.name(), file_path.display());
             Vec::new()
@@ -341,6 +398,14 @@ impl Analyzer {
   }
 
   pub async fn analyze_package(&self, pkg_ctx: &PackageContext<'_>) -> Vec<Issue> {
+    self.analyze_package_with_benchmark(pkg_ctx, None).await
+  }
+
+  pub async fn analyze_package_with_benchmark(
+    &self,
+    pkg_ctx: &PackageContext<'_>,
+    benchmark: Option<&BenchmarkCollector>,
+  ) -> Vec<Issue> {
     use futures::future::join_all;
 
     let futures: Vec<_> = self
@@ -349,13 +414,25 @@ impl Analyzer {
       .map(|analyzer| {
         let name = analyzer.name();
         async move {
+          let start = std::time::Instant::now();
           let issues = analyzer.analyze(pkg_ctx).await;
-          apply_severity_override(issues, name, pkg_ctx.config)
+          let duration = start.elapsed();
+          (name, issues, duration)
         }
       })
       .collect();
 
-    join_all(futures).await.into_iter().flatten().collect()
+    let results = join_all(futures).await;
+
+    results
+      .into_iter()
+      .flat_map(|(name, issues, duration)| {
+        if let Some(b) = benchmark {
+          b.record_analyzer(name, duration, issues.len());
+        }
+        apply_severity_override(issues, name, pkg_ctx.config)
+      })
+      .collect()
   }
 
   pub fn is_offline(&self) -> bool {
@@ -376,10 +453,20 @@ impl Analyzer {
   ) -> napi::Result<Vec<AnalysisResult>> {
     use futures::stream::{self, StreamExt};
 
+    let discovery_start = std::time::Instant::now();
     let (cached_results, work_items) = self.discover_packages(ctx);
+    if let Some(ref b) = ctx.benchmark {
+      b.record_discovery_time(discovery_start.elapsed());
+      b.add_packages(work_items.len() + cached_results.len());
+    }
+
     let mut results = cached_results;
 
+    let prefetch_start = std::time::Instant::now();
     let prefetched = self.prefetch_data(&work_items, ctx).await;
+    if let Some(ref b) = ctx.benchmark {
+      b.record_prefetch_time(prefetch_start.elapsed());
+    }
 
     let mut analyzed: Vec<AnalysisResult> = stream::iter(work_items)
       .map(|wi| self.analyze_single_package(wi, ctx, prefetched.clone()))
@@ -520,12 +607,17 @@ impl Analyzer {
       prefetched,
     };
 
+    let benchmark = ctx.benchmark.as_ref();
     let (package_issues, js_entries) = tokio::join!(
-      self.analyze_package(&pkg_ctx),
+      self.analyze_package_with_benchmark(&pkg_ctx, benchmark),
       Self::discover_js_files(&pkg_path_clone, ctx.config)
     );
 
-    let file_issues = self.analyze_files(&js_entries, ctx);
+    if let Some(ref b) = ctx.benchmark {
+      b.add_files(js_entries.len());
+    }
+
+    let file_issues = self.analyze_files_with_benchmark(&js_entries, ctx);
 
     let mut all_issues = package_issues;
     all_issues.extend(file_issues);
@@ -585,24 +677,51 @@ impl Analyzer {
       .collect()
   }
 
-  fn analyze_files(&self, js_entries: &[PathBuf], ctx: &AnalyzeContext<'_>) -> Vec<Issue> {
+  fn analyze_files_with_benchmark(
+    &self,
+    js_entries: &[PathBuf],
+    ctx: &AnalyzeContext<'_>,
+  ) -> Vec<Issue> {
     use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    js_entries
+    let total_bytes = AtomicUsize::new(0);
+    let total_read_time = std::sync::Mutex::new(std::time::Duration::ZERO);
+
+    let issues: Vec<Issue> = js_entries
       .par_iter()
       .filter_map(|js_path| {
+        let read_start = std::time::Instant::now();
         let source = match fs::read_to_string(js_path) {
           Ok(s) => s,
           Err(_) => return None,
         };
+        let read_duration = read_start.elapsed();
 
-        let mut file_issues = self.analyze_file(&source, js_path, ctx.config);
+        if ctx.benchmark.is_some() {
+          total_bytes.fetch_add(source.len(), Ordering::Relaxed);
+          if let Ok(mut t) = total_read_time.lock() {
+            *t += read_duration;
+          }
+        }
+
+        let mut file_issues =
+          self.analyze_file_with_benchmark(&source, js_path, ctx.config, ctx.benchmark.as_ref());
         file_issues
           .retain(|i| i.id.as_ref().map(|id| !ctx.ignore_issues.contains(id)).unwrap_or(true));
         Some(file_issues)
       })
       .flatten()
-      .collect()
+      .collect();
+
+    if let Some(ref b) = ctx.benchmark {
+      b.add_bytes(total_bytes.load(Ordering::Relaxed));
+      if let Ok(t) = total_read_time.lock() {
+        b.add_file_read_time(*t);
+      }
+    }
+
+    issues
   }
 }
 

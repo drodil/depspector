@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 pub mod analyzers;
 pub mod ast;
+pub mod benchmark;
 pub mod cache;
 pub mod config;
 pub mod error;
@@ -19,6 +20,7 @@ pub mod report;
 pub mod util;
 
 use crate::analyzers::{AnalyzeContext, Analyzer};
+use crate::benchmark::{print_benchmark_report, BenchmarkCollector};
 use crate::cache::PackageCache;
 use crate::config::Config;
 use crate::error::format_cli_error;
@@ -78,12 +80,14 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     }
   }
 
-  let spinner = if !cli.verbose.is_present() {
+  let spinner = if !cli.verbose.is_present() && !cli.benchmark {
     Some(Spinner::new(spinners::Dots, "Analyzing packages...", Color::Cyan))
   } else {
     info!("Starting analysis of {}", node_modules_path.display());
     None
   };
+
+  let benchmark_collector = if cli.benchmark { Some(BenchmarkCollector::new()) } else { None };
 
   let start_time = std::time::Instant::now();
   let analyze_ctx = AnalyzeContext::new(
@@ -94,7 +98,8 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     cli.fail_fast,
     cli.concurrency,
     cli.offline,
-  );
+  )
+  .with_benchmark(benchmark_collector.clone());
   let results = analyzer.analyze_packages(&analyze_ctx).await?;
 
   let duration = start_time.elapsed();
@@ -108,7 +113,12 @@ pub async fn run(args: Vec<String>) -> Result<()> {
 
   reporter.report(&results, &report_ctx).map_err(|e| NapiError::from_reason(e.to_string()))?;
 
-  println!("Analysis completed in {:.2?}", duration);
+  if let Some(collector) = benchmark_collector {
+    print_benchmark_report(&collector.get_results(), duration);
+  } else {
+    println!("Analysis completed in {:.2?}", duration);
+  }
+
   let exit_level = config.exit_with_failure_on_level.as_deref().unwrap_or("high");
   if exit_level != "off" && reporter.has_issues_at_level(&results, exit_level) {
     return Err(NapiError::from_reason("Analysis found issues at failure level"));
@@ -155,6 +165,8 @@ struct Cli {
   json: Option<PathBuf>,
   #[clap(long, help = "Output report as YAML to file")]
   yaml: Option<PathBuf>,
+  #[clap(long, help = "Show detailed benchmark/timing information for each analyzer")]
+  benchmark: bool,
 }
 
 #[cfg(test)]

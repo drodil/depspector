@@ -38,12 +38,15 @@ impl FileAnalyzer for MinifiedAnalyzer {
         &message,
       );
 
+      // Take first 80 characters safely to avoid splitting multi-byte UTF-8 chars
+      let preview: String = line.chars().take(80).collect();
+
       issues.push(Issue {
         issue_type: self.name().to_string(),
         line: line_num,
         message,
         severity: Severity::Low,
-        code: Some(format!("{}...", &line[..80.min(line.len())])),
+        code: Some(format!("{}...", preview)),
         analyzer: Some(self.name().to_string()),
         id: Some(id),
       });
@@ -96,6 +99,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -118,6 +122,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -146,6 +151,7 @@ const y = 2;
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -167,9 +173,34 @@ const y = 2;
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
     assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_handles_utf8_long_lines() {
+    let analyzer = MinifiedAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let utf8_content = "Пропозиції機能フィーチャ기능";
+    let long_line = utf8_content.repeat(100);
+    let source = long_line;
+
+    let context = FileContext {
+      source: &source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+
+    let issues = analyzer.analyze(&context);
+    assert!(!issues.is_empty());
+    assert!(issues[0].code.is_some());
   }
 }

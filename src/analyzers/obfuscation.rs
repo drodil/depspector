@@ -151,6 +151,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -172,6 +173,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -193,6 +195,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -217,6 +220,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
@@ -238,6 +242,7 @@ mod tests {
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
+      parsed_ast: None,
     };
     let issues = analyzer.analyze(&context);
 
