@@ -6,6 +6,41 @@ use crate::util::{generate_issue_id, LineIndex};
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
+// Common Node.js environment variables that are typically safe
+const DEFAULT_ALLOWED_ENV_VARS: &[&str] = &[
+  "NODE_ENV",
+  "DEBUG",
+  "PORT",
+  "HOST",
+  "HOSTNAME",
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "TZ",
+  "CI",
+  "npm_package_name",
+  "npm_package_version",
+  "npm_lifecycle_event",
+  "NODE_DEBUG",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "UV_THREADPOOL_SIZE",
+  "NODE_EXTRA_CA_CERTS",
+  "NODE_TLS_REJECT_UNAUTHORIZED",
+  "NO_COLOR",
+  "FORCE_COLOR",
+  "TERM",
+  "COLORTERM",
+  "PWD",
+  "OLDPWD",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
+];
+
 lazy_static! {
   static ref QUICK_CHECK: AhoCorasick = AhoCorasick::new(["process.env", "process["]).unwrap();
 }
@@ -83,8 +118,9 @@ impl FileAnalyzer for EnvAnalyzer {
     }
 
     let config = context.config.get_analyzer_config(self.name());
-    let allowed_vars: Vec<String> =
-      config.and_then(|c| c.allowed_env_vars.clone()).unwrap_or_default();
+    let allowed_vars: Vec<String> = config
+      .and_then(|c| c.allowed_env_vars.clone())
+      .unwrap_or_else(|| DEFAULT_ALLOWED_ENV_VARS.iter().map(|s| s.to_string()).collect());
 
     let mut visitor = EnvVisitor {
       issues: vec![],
@@ -156,7 +192,8 @@ mod tests {
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let source = r#"const { NODE_ENV, API_KEY } = process.env;"#;
+    // Use non-default env vars to test detection
+    let source = r#"const { SECRET_KEY, API_TOKEN } = process.env;"#;
 
     let context = FileContext {
       source,
@@ -177,10 +214,33 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
+    // Override defaults with custom allowed list including CUSTOM_VAR
     let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.allowed_env_vars = Some(vec!["NODE_ENV".to_string()]);
+    analyzer_config.allowed_env_vars = Some(vec!["CUSTOM_VAR".to_string()]);
     config.analyzers.insert("env".to_string(), analyzer_config);
 
+    let source = r#"const env = process.env.CUSTOM_VAR;"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_default_allowed_variables() {
+    let analyzer = EnvAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    // NODE_ENV should be allowed by default
     let source = r#"const env = process.env.NODE_ENV;"#;
 
     let context = FileContext {

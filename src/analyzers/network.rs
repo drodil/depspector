@@ -12,6 +12,27 @@ const HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch", "head",
 
 const SOCKET_FUNCTIONS: &[&str] = &["connect", "createConnection"];
 
+// Default allowed hosts - common safe domains for npm packages
+const DEFAULT_ALLOWED_HOSTS: &[&str] = &[
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "0.0.0.0",
+  "registry.npmjs.org",
+  "registry.yarnpkg.com",
+  "npm.pkg.github.com",
+  "github.com",
+  "raw.githubusercontent.com",
+  "api.github.com",
+  "gitlab.com",
+  "bitbucket.org",
+  "npmjs.com",
+  "unpkg.com",
+  "cdn.jsdelivr.net",
+  "esm.sh",
+  "deno.land",
+];
+
 // Quick-check patterns for early bail-out
 const QUICK_CHECK_PATTERNS: &[&str] = &[
   "fetch",
@@ -161,8 +182,9 @@ impl FileAnalyzer for NetworkAnalyzer {
     }
 
     let config = context.config.get_analyzer_config(self.name());
-    let allowed_hosts: Vec<String> =
-      config.and_then(|c| c.allowed_hosts.clone()).unwrap_or_default();
+    let allowed_hosts: Vec<String> = config
+      .and_then(|c| c.allowed_hosts.clone())
+      .unwrap_or_else(|| DEFAULT_ALLOWED_HOSTS.iter().map(|s| s.to_string()).collect());
 
     let mut visitor = NetworkVisitor {
       issues: vec![],

@@ -164,7 +164,7 @@ Create a `.depspectorrc` file in your project root:
     },
     "env": {
       "enabled": false,
-      "allowedVariables": ["NODE_ENV", "CI"]
+      "allowedEnvVars": ["NODE_ENV", "CI"]
     },
     "fs": {
       "enabled": true,
@@ -305,28 +305,28 @@ Example:
 
 ### Analyzer Reference
 
-| Analyzer      | Description                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------ |
-| `cve`         | Checks packages against OSV.dev database for known CVEs and security advisories. Configurable timeout. |
-| `deprecated`  | Detects packages marked as deprecated in the npm registry.                                             |
-| `env`         | Detects access to environment variables (`process.env`). Supports `allowedVariables` whitelist.        |
-| `network`     | Detects network requests. Supports `allowedHosts` whitelist.                                           |
-| `eval`        | Flags `eval()` and `new Function()` usage.                                                             |
-| `obfuscation` | Detects suspiciously long strings (potential obfuscation). Configurable `minStringLength`.             |
-| `fs`          | Detects access to sensitive paths. Supports `additionalDangerousPaths`.                                |
-| `typosquat`   | Identifies packages with names similar to popular libraries.                                           |
-| `cooldown`    | Flags newly published packages. Configurable `hoursSincePublish`.                                      |
-| `dormant`     | Alerts on packages updated after long inactivity. Configurable `daysSincePreviousPublish`.             |
-| `dynamic`     | Detects `vm.runInContext()` and dynamic require patterns.                                              |
-| `buffer`      | Flags suspicious `Buffer.from()` usage. Configurable `minBufferLength`.                                |
-| `reputation`  | Checks maintainer count and publisher trustworthiness. Supports `whitelistedUsers`.                    |
-| `scripts`     | Flags suspicious lifecycle scripts (install, postinstall, preinstall).                                 |
-| `process`     | Detects child process spawning and low-level spawn calls.                                              |
-| `native`      | Alerts on packages with native bindings.                                                               |
-| `secrets`     | Identifies hardcoded credentials (AWS keys, private keys, API tokens).                                 |
-| `metadata`    | Flags collection of system information (`os.userInfo()`, network interfaces).                          |
-| `pollution`   | Detects prototype pollution attempts.                                                                  |
-| `minified`    | Identifies minified or obfuscated code.                                                                |
+| Analyzer      | Description                                                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `cve`         | Checks packages against OSV.dev database for known CVEs and security advisories. Configurable timeout.               |
+| `deprecated`  | Detects packages marked as deprecated in the npm registry.                                                           |
+| `env`         | Detects access to environment variables (`process.env`). Supports `allowedEnvVars` whitelist with sensible defaults. |
+| `network`     | Detects network requests. Supports `allowedHosts` whitelist with sensible defaults.                                  |
+| `eval`        | Flags `eval()` and `new Function()` usage.                                                                           |
+| `obfuscation` | Detects suspiciously long strings (potential obfuscation). Configurable `minStringLength`.                           |
+| `fs`          | Detects access to sensitive paths. Supports `additionalDangerousPaths`.                                              |
+| `typosquat`   | Identifies packages with names similar to popular libraries.                                                         |
+| `cooldown`    | Flags newly published packages. Configurable `hoursSincePublish`.                                                    |
+| `dormant`     | Alerts on packages updated after long inactivity. Configurable `daysSincePreviousPublish`.                           |
+| `dynamic`     | Detects `vm.runInContext()` and dynamic require patterns.                                                            |
+| `buffer`      | Flags suspicious `Buffer.from()` usage. Configurable `minBufferLength`.                                              |
+| `reputation`  | Checks maintainer count and publisher trustworthiness. Supports `whitelistedUsers`.                                  |
+| `scripts`     | Flags suspicious lifecycle scripts (install, postinstall, preinstall).                                               |
+| `process`     | Detects child process spawning and low-level spawn calls.                                                            |
+| `native`      | Alerts on packages with native bindings.                                                                             |
+| `secrets`     | Identifies hardcoded credentials (AWS keys, private keys, API tokens).                                               |
+| `metadata`    | Flags collection of system information (`os.userInfo()`, network interfaces).                                        |
+| `pollution`   | Detects prototype pollution attempts.                                                                                |
+| `minified`    | Identifies minified or obfuscated code.                                                                              |
 
 ### CVE Analyzer Configuration
 
@@ -367,19 +367,53 @@ You can customize these thresholds to match your organization's security policie
 
 ### Env Analyzer Configuration
 
-You can whitelist specific environment variables to suppress findings when they are accessed intentionally (e.g., `NODE_ENV`, `CI`).
+The `env` analyzer detects access to environment variables (`process.env`). By default, common Node.js environment variables are whitelisted to reduce noise:
+
+**Default Allowed Variables:**
+`NODE_ENV`, `DEBUG`, `PORT`, `HOST`, `HOSTNAME`, `PATH`, `HOME`, `USER`, `SHELL`, `LANG`, `LC_ALL`, `TZ`, `CI`, `npm_package_name`, `npm_package_version`, `npm_lifecycle_event`, `NODE_DEBUG`, `NODE_OPTIONS`, `NODE_PATH`, `UV_THREADPOOL_SIZE`, `NODE_EXTRA_CA_CERTS`, `NODE_TLS_REJECT_UNAUTHORIZED`, `NO_COLOR`, `FORCE_COLOR`, `TERM`, `COLORTERM`, `PWD`, `OLDPWD`, `TMPDIR`, `TEMP`, `TMP`
+
+You can override the defaults with your own whitelist:
 
 ```json
 {
   "analyzers": {
     "env": {
-      "allowedVariables": ["NODE_ENV", "CI", "PUBLIC_API_URL"]
+      "allowedEnvVars": ["NODE_ENV", "CI", "MY_CUSTOM_VAR"]
     }
   }
 }
 ```
 
-Any access to `process.env.<VAR>` where `<VAR>` is in `allowedVariables` will be ignored. Bare `process.env` access and non-whitelisted variables will still be reported.
+| Property         | Type     | Default                   | Description                                    |
+| ---------------- | -------- | ------------------------- | ---------------------------------------------- |
+| `allowedEnvVars` | string[] | (common Node.js env vars) | Environment variables to ignore when accessed. |
+
+Any access to `process.env.<VAR>` where `<VAR>` is in `allowedEnvVars` will be ignored. Bare `process.env` access and non-whitelisted variables will still be reported.
+
+### Network Analyzer Configuration
+
+The `network` analyzer detects network requests (`fetch`, `axios`, `http.get`, `WebSocket`, etc.). By default, common safe hosts are whitelisted to reduce noise from legitimate package behavior:
+
+**Default Allowed Hosts:**
+`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `registry.npmjs.org`, `registry.yarnpkg.com`, `npm.pkg.github.com`, `github.com`, `raw.githubusercontent.com`, `api.github.com`, `gitlab.com`, `bitbucket.org`, `npmjs.com`, `unpkg.com`, `cdn.jsdelivr.net`, `esm.sh`, `deno.land`
+
+You can override the defaults with your own whitelist:
+
+```json
+{
+  "analyzers": {
+    "network": {
+      "allowedHosts": ["api.mycompany.com", "internal.service.local"]
+    }
+  }
+}
+```
+
+| Property       | Type     | Default             | Description                                     |
+| -------------- | -------- | ------------------- | ----------------------------------------------- |
+| `allowedHosts` | string[] | (common safe hosts) | Hosts to ignore when network requests are made. |
+
+**Note**: The analyzer only flags actual network function calls (like `fetch()`, `axios.get()`, `http.request()`). URL strings in configuration objects or templates are not flagged.
 
 ### Fs Analyzer Configuration
 
