@@ -12,6 +12,44 @@ pub fn get_line(source: &str, line_number: usize) -> String {
     .unwrap_or_default()
 }
 
+/// Pre-computed line index for O(1) line lookups.
+/// Stores byte offsets for each line start, allowing fast retrieval of any line.
+pub struct LineIndex {
+  source: String,
+  line_starts: Vec<usize>,
+}
+
+impl LineIndex {
+  pub fn new(source: &str) -> Self {
+    let mut line_starts = vec![0];
+    for (i, c) in source.char_indices() {
+      if c == '\n' {
+        line_starts.push(i + 1);
+      }
+    }
+    Self { source: source.to_string(), line_starts }
+  }
+
+  pub fn get_line(&self, line_number: usize) -> String {
+    if line_number == 0 || line_number > self.line_starts.len() {
+      return String::new();
+    }
+
+    let start = self.line_starts[line_number - 1];
+    let end = if line_number < self.line_starts.len() {
+      self.line_starts[line_number].saturating_sub(1)
+    } else {
+      self.source.len()
+    };
+
+    if start >= self.source.len() {
+      return String::new();
+    }
+
+    self.source[start..end.min(self.source.len())].trim().to_string()
+  }
+}
+
 pub fn sha256_hash(input: &str) -> String {
   let mut hasher = Sha256::new();
   hasher.update(input.as_bytes());
@@ -89,44 +127,6 @@ pub fn is_sensitive_path(path: &str) -> bool {
   sensitive_patterns.iter().any(|p| path_lower.contains(p))
 }
 
-pub fn is_suspicious_url(url: &str) -> bool {
-  let suspicious_patterns = [
-    "ngrok.io",
-    "serveo.net",
-    "localtunnel.me",
-    "hookbin.com",
-    "requestbin.com",
-    "pipedream.net",
-    "webhook.site",
-    "burpcollaborator.net",
-  ];
-
-  let url_lower = url.to_lowercase();
-  suspicious_patterns.iter().any(|p| url_lower.contains(p))
-}
-
-pub fn is_minified(source: &str) -> bool {
-  const MIN_LONG_LINE_LENGTH: usize = 1000;
-  const MIN_CODE_LENGTH: usize = 500;
-  const MAX_WHITESPACE_RATIO: f64 = 0.05;
-
-  // Check for very long lines
-  if source.lines().any(|line| line.len() > MIN_LONG_LINE_LENGTH) {
-    return true;
-  }
-
-  // Check for low whitespace ratio
-  if source.len() > MIN_CODE_LENGTH {
-    let whitespace_count = source.chars().filter(|c| c.is_whitespace()).count();
-    let ratio = whitespace_count as f64 / source.len() as f64;
-    if ratio < MAX_WHITESPACE_RATIO {
-      return true;
-    }
-  }
-
-  false
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -138,6 +138,35 @@ mod tests {
     assert_eq!(get_line(source, 2), "line2");
     assert_eq!(get_line(source, 3), "line3");
     assert_eq!(get_line(source, 4), "");
+  }
+
+  #[test]
+  fn test_line_index_basic() {
+    let source = "line1\nline2\nline3";
+    let index = LineIndex::new(source);
+    assert_eq!(index.get_line(1), "line1");
+    assert_eq!(index.get_line(2), "line2");
+    assert_eq!(index.get_line(3), "line3");
+    assert_eq!(index.get_line(4), "");
+    assert_eq!(index.get_line(0), "");
+  }
+
+  #[test]
+  fn test_line_index_with_whitespace() {
+    let source = "  indented\n\ttabbed\n  spaced  ";
+    let index = LineIndex::new(source);
+    assert_eq!(index.get_line(1), "indented");
+    assert_eq!(index.get_line(2), "tabbed");
+    assert_eq!(index.get_line(3), "spaced");
+  }
+
+  #[test]
+  fn test_line_index_empty_lines() {
+    let source = "first\n\nthird";
+    let index = LineIndex::new(source);
+    assert_eq!(index.get_line(1), "first");
+    assert_eq!(index.get_line(2), "");
+    assert_eq!(index.get_line(3), "third");
   }
 
   #[test]
@@ -177,12 +206,5 @@ mod tests {
     assert!(is_sensitive_path("/home/user/.ssh/id_rsa"));
     assert!(is_sensitive_path(".npmrc"));
     assert!(!is_sensitive_path("/usr/local/lib/node_modules"));
-  }
-
-  #[test]
-  fn test_is_suspicious_url() {
-    assert!(is_suspicious_url("https://abc123.ngrok.io/callback"));
-    assert!(is_suspicious_url("http://webhook.site/test"));
-    assert!(!is_suspicious_url("https://registry.npmjs.org"));
   }
 }

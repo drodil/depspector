@@ -41,6 +41,7 @@ impl PackageAnalyzer for NativeAnalyzer {
         code: None,
         analyzer: Some(self.name().to_string()),
         id: Some(id),
+        file: Some("binding.gyp".to_string()),
       });
     }
 
@@ -58,6 +59,7 @@ impl PackageAnalyzer for NativeAnalyzer {
         code: None,
         analyzer: Some(self.name().to_string()),
         id: Some(id),
+        file: Some("CMakeLists.txt".to_string()),
       });
     }
 
@@ -81,6 +83,7 @@ impl PackageAnalyzer for NativeAnalyzer {
           code: None,
           analyzer: Some(self.name().to_string()),
           id: Some(id),
+          file: None,
         });
       }
     }

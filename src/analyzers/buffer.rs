@@ -56,6 +56,7 @@ impl FileAnalyzer for BufferAnalyzer {
               code: Some(line.trim().to_string()),
               analyzer: Some(self.name().to_string()),
               id: Some(id),
+              file: None,
             });
           }
         }

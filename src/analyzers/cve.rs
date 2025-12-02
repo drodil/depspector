@@ -95,6 +95,7 @@ impl PackageAnalyzer for CVEAnalyzer {
         code: None,
         analyzer: Some(self.name().to_string()),
         id: Some(id),
+        file: None,
       });
     }
 

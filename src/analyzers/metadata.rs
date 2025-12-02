@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, AstVisitor, CallInfo, NodeInterest};
-use crate::util::generate_issue_id;
+use crate::util::{generate_issue_id, LineIndex};
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -43,13 +43,7 @@ struct MetadataVisitor<'a> {
   issues: Vec<Issue>,
   analyzer_name: &'static str,
   file_path: &'a str,
-  source: &'a str,
-}
-
-impl<'a> MetadataVisitor<'a> {
-  fn get_code_at_line(&self, line: usize) -> String {
-    self.source.lines().nth(line.saturating_sub(1)).unwrap_or("").trim().to_string()
-  }
+  line_index: LineIndex,
 }
 
 impl AstVisitor for MetadataVisitor<'_> {
@@ -67,9 +61,10 @@ impl AstVisitor for MetadataVisitor<'_> {
           line,
           message,
           severity: Severity::Low,
-          code: Some(self.get_code_at_line(line)),
+          code: Some(self.line_index.get_line(line)),
           analyzer: Some(self.analyzer_name.to_string()),
           id: Some(id),
+          file: None,
         });
       }
     }
@@ -95,7 +90,7 @@ impl FileAnalyzer for MetadataAnalyzer {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
-      source: context.source,
+      line_index: LineIndex::new(context.source),
     };
 
     let interest = NodeInterest::none().with_calls();

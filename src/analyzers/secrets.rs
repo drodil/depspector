@@ -51,7 +51,7 @@ lazy_static! {
         r#"SK[0-9a-fA-F]{32}"#
     ).unwrap();
 
-    static ref SECRETS_SET: RegexSet = RegexSet::new(&[
+    static ref SECRETS_SET: RegexSet = RegexSet::new([
         r#"AKIA[0-9A-Z]{16}"#, // 0: AWS
         r#"-----BEGIN RSA PRIVATE KEY-----"#, // 1: RSA
         r#"-----BEGIN (?:EC |DSA |OPENSSH )?PRIVATE KEY-----"#, // 2: Private Key
@@ -93,7 +93,9 @@ impl FileAnalyzer for SecretsAnalyzer {
         ));
       }
 
-      if (matches.matched(1) || matches.matched(2)) && (RSA_PRIVATE_KEY.is_match(line) || PRIVATE_KEY.is_match(line)) {
+      if (matches.matched(1) || matches.matched(2))
+        && (RSA_PRIVATE_KEY.is_match(line) || PRIVATE_KEY.is_match(line))
+      {
         issues.push(create_issue(
           self.name(),
           context,
@@ -174,7 +176,8 @@ impl FileAnalyzer for SecretsAnalyzer {
         && GENERIC_API_KEY.is_match(line)
         && !matches.matched(0) // Not AWS
         && !matches.matched(3) // Not Stripe
-        && !matches.matched(4) // Not GitHub
+        && !matches.matched(4)
+      // Not GitHub
       {
         issues.push(create_issue(
           self.name(),
@@ -210,6 +213,7 @@ fn create_issue(
     code: Some(redact_secret(line)),
     analyzer: Some(analyzer_name.to_string()),
     id: Some(id),
+    file: None,
   }
 }
 

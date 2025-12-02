@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest};
-use crate::util::generate_issue_id;
+use crate::util::{generate_issue_id, LineIndex};
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -73,15 +73,11 @@ struct FsVisitor<'a> {
   issues: Vec<Issue>,
   analyzer_name: &'static str,
   file_path: &'a str,
-  source: &'a str,
+  line_index: LineIndex,
   dangerous_paths: Vec<&'a str>,
 }
 
-impl<'a> FsVisitor<'a> {
-  fn get_code_at_line(&self, line: usize) -> String {
-    self.source.lines().nth(line.saturating_sub(1)).unwrap_or("").trim().to_string()
-  }
-
+impl FsVisitor<'_> {
   fn check_dangerous_path(&self, path: &str) -> bool {
     self.dangerous_paths.iter().any(|dangerous| path.contains(dangerous))
   }
@@ -105,9 +101,10 @@ impl AstVisitor for FsVisitor<'_> {
                 line,
                 message,
                 severity: Severity::High,
-                code: Some(self.get_code_at_line(line)),
+                code: Some(self.line_index.get_line(line)),
                 analyzer: Some(self.analyzer_name.to_string()),
                 id: Some(id),
+                file: None,
               });
             }
           }
@@ -124,9 +121,10 @@ impl AstVisitor for FsVisitor<'_> {
             line,
             message,
             severity: Severity::Medium,
-            code: Some(self.get_code_at_line(line)),
+            code: Some(self.line_index.get_line(line)),
             analyzer: Some(self.analyzer_name.to_string()),
             id: Some(id),
+            file: None,
           });
         }
 
@@ -141,9 +139,10 @@ impl AstVisitor for FsVisitor<'_> {
             line,
             message,
             severity: Severity::Medium,
-            code: Some(self.get_code_at_line(line)),
+            code: Some(self.line_index.get_line(line)),
             analyzer: Some(self.analyzer_name.to_string()),
             id: Some(id),
+            file: None,
           });
         }
       }
@@ -179,7 +178,7 @@ impl FileAnalyzer for FsAnalyzer {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
-      source: context.source,
+      line_index: LineIndex::new(context.source),
       dangerous_paths,
     };
 

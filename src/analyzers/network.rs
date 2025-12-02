@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest};
-use crate::util::{generate_issue_id, is_suspicious_url};
+use crate::util::{generate_issue_id, LineIndex};
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -40,15 +40,11 @@ struct NetworkVisitor<'a> {
   issues: Vec<Issue>,
   analyzer_name: &'static str,
   file_path: &'a str,
-  source: &'a str,
+  line_index: LineIndex,
   allowed_hosts: Vec<String>,
 }
 
-impl<'a> NetworkVisitor<'a> {
-  fn get_code_at_line(&self, line: usize) -> String {
-    self.source.lines().nth(line.saturating_sub(1)).unwrap_or("").trim().to_string()
-  }
-
+impl NetworkVisitor<'_> {
   fn is_allowed_url(&self, url: &str) -> bool {
     self.allowed_hosts.iter().any(|h| url.contains(h))
   }
@@ -58,24 +54,18 @@ impl<'a> NetworkVisitor<'a> {
       return;
     }
 
-    let severity = if is_suspicious_url(url) { Severity::Critical } else { Severity::Medium };
-
-    let message = if is_suspicious_url(url) {
-      format!("Suspicious URL detected: {}", url)
-    } else {
-      format!("Network URL found: {}", url)
-    };
-
+    let message = "HTTP request detected".to_string();
     let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
 
     self.issues.push(Issue {
       issue_type: self.analyzer_name.to_string(),
       line,
       message,
-      severity,
-      code: Some(self.get_code_at_line(line)),
+      severity: Severity::Medium,
+      code: Some(self.line_index.get_line(line)),
       analyzer: Some(self.analyzer_name.to_string()),
       id: Some(id),
+      file: None,
     });
   }
 }
@@ -84,37 +74,19 @@ impl AstVisitor for NetworkVisitor<'_> {
   fn visit_call(&mut self, call: &CallInfo) {
     let line = call.line.max(1);
 
-    // Check for direct network function calls: fetch(), axios(), got(), request()
     if let Some(ref callee) = call.callee_name {
-      if NETWORK_FUNCTIONS.contains(&callee.as_str()) {
-        let message = "HTTP request function detected";
-        let id = generate_issue_id(self.analyzer_name, self.file_path, line, message);
-
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message: message.to_string(),
-          severity: Severity::Medium,
-          code: Some(self.get_code_at_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-        });
-
-        // Check if first argument is a URL string
-        if !call.arguments.is_empty() {
-          if let ArgInfo::StringLiteral(url) = &call.arguments[0] {
-            if url.starts_with("http://")
-              || url.starts_with("https://")
-              || url.starts_with("ws://")
-              || url.starts_with("wss://")
-            {
-              self.check_url_string(url, line);
-            }
+      if NETWORK_FUNCTIONS.contains(&callee.as_str()) && !call.arguments.is_empty() {
+        if let ArgInfo::StringLiteral(url) = &call.arguments[0] {
+          if url.starts_with("http://")
+            || url.starts_with("https://")
+            || url.starts_with("ws://")
+            || url.starts_with("wss://")
+          {
+            self.check_url_string(url, line);
           }
         }
       }
 
-      // Check for new WebSocket()
       if callee == "WebSocket" {
         let message = "Socket connection detected";
         let id = generate_issue_id(self.analyzer_name, self.file_path, line, message);
@@ -124,14 +96,14 @@ impl AstVisitor for NetworkVisitor<'_> {
           line,
           message: message.to_string(),
           severity: Severity::High,
-          code: Some(self.get_code_at_line(line)),
+          code: Some(self.line_index.get_line(line)),
           analyzer: Some(self.analyzer_name.to_string()),
           id: Some(id),
+          file: None,
         });
       }
     }
 
-    // Check for http.get(), https.post(), axios.get(), etc.
     if let (Some(ref callee), Some(ref object)) = (&call.callee_name, &call.object_name) {
       // http/https module methods
       if (object == "http" || object == "https") && HTTP_METHODS.contains(&callee.as_str()) {
@@ -143,13 +115,13 @@ impl AstVisitor for NetworkVisitor<'_> {
           line,
           message: message.to_string(),
           severity: Severity::Medium,
-          code: Some(self.get_code_at_line(line)),
+          code: Some(self.line_index.get_line(line)),
           analyzer: Some(self.analyzer_name.to_string()),
           id: Some(id),
+          file: None,
         });
       }
 
-      // net.connect(), net.createConnection(), socket.connect()
       if (object == "net" || object == "socket") && SOCKET_FUNCTIONS.contains(&callee.as_str()) {
         let message = "Socket connection detected";
         let id = generate_issue_id(self.analyzer_name, self.file_path, line, message);
@@ -159,23 +131,12 @@ impl AstVisitor for NetworkVisitor<'_> {
           line,
           message: message.to_string(),
           severity: Severity::High,
-          code: Some(self.get_code_at_line(line)),
+          code: Some(self.line_index.get_line(line)),
           analyzer: Some(self.analyzer_name.to_string()),
           id: Some(id),
+          file: None,
         });
       }
-    }
-  }
-
-  fn visit_string_literal(&mut self, value: &str, line: usize) {
-    // Check for URL strings
-    if value.starts_with("http://")
-      || value.starts_with("https://")
-      || value.starts_with("ftp://")
-      || value.starts_with("ws://")
-      || value.starts_with("wss://")
-    {
-      self.check_url_string(value, line);
     }
   }
 }
@@ -207,11 +168,11 @@ impl FileAnalyzer for NetworkAnalyzer {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
-      source: context.source,
+      line_index: LineIndex::new(context.source),
       allowed_hosts,
     };
 
-    let interest = NodeInterest::none().with_calls().with_string_literals();
+    let interest = NodeInterest::none().with_calls();
     walk_ast_filtered(context.parsed_ast, context.source, &mut visitor, interest);
 
     visitor.issues
@@ -245,12 +206,13 @@ mod tests {
   }
 
   #[test]
-  fn test_detects_suspicious_url() {
+  fn test_ignores_url_constants() {
     let analyzer = NetworkAnalyzer;
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let source = r#"const url = "https://evil.ngrok.io/callback";"#;
+    // URL constants/templates should not be flagged - only actual network calls
+    let source = r#"const url = "https://example.com/callback";"#;
 
     let context = FileContext {
       source,
@@ -262,10 +224,7 @@ mod tests {
     };
     let issues = analyzer.analyze(&context);
 
-    assert!(!issues.is_empty());
-    let has_suspicious =
-      issues.iter().any(|i| i.message.contains("Suspicious") || i.message.contains("ngrok"));
-    assert!(has_suspicious);
+    assert!(issues.is_empty());
   }
 
   #[test]

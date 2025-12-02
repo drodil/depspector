@@ -126,17 +126,20 @@ impl Registry {
               .await
               .map_err(|e| napi::Error::from_reason(format!("Failed to parse metadata: {}", e)));
           } else if response.status().as_u16() == 404 {
-             return Err(napi::Error::from_reason(format!(
+            return Err(napi::Error::from_reason(format!(
               "Package not found: {} (status {})",
               name,
               response.status()
             )));
           } else {
-             let status = response.status();
-             last_error = Some(napi::Error::from_reason(format!("Registry request failed with status: {}", status)));
-             if status.as_u16() < 500 && status.as_u16() != 429 {
-                break;
-             }
+            let status = response.status();
+            last_error = Some(napi::Error::from_reason(format!(
+              "Registry request failed with status: {}",
+              status
+            )));
+            if status.as_u16() < 500 && status.as_u16() != 429 {
+              break;
+            }
           }
         }
         Err(e) => {
@@ -145,7 +148,10 @@ impl Registry {
       }
     }
 
-    Err(last_error.unwrap_or_else(|| napi::Error::from_reason("Registry request failed after retries")))
+    Err(
+      last_error
+        .unwrap_or_else(|| napi::Error::from_reason("Registry request failed after retries")),
+    )
   }
 
   fn ensure_dir(path: &Path) -> std::io::Result<()> {

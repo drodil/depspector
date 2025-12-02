@@ -46,6 +46,7 @@ impl FileAnalyzer for MinifiedAnalyzer {
         code: Some(format!("{}...", preview)),
         analyzer: Some(self.name().to_string()),
         id: Some(id),
+        file: None,
       });
     }
 
@@ -67,6 +68,7 @@ impl FileAnalyzer for MinifiedAnalyzer {
           code: None,
           analyzer: Some(self.name().to_string()),
           id: Some(id),
+          file: None,
         });
       }
     }

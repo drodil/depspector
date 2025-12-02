@@ -46,6 +46,7 @@ impl FileAnalyzer for ObfuscationAnalyzer {
           code: Some(preview),
           analyzer: Some(self.name().to_string()),
           id: Some(id),
+          file: None,
         });
       }
 
@@ -67,6 +68,7 @@ impl FileAnalyzer for ObfuscationAnalyzer {
           code: Some(truncate_line(line, 80)),
           analyzer: Some(self.name().to_string()),
           id: Some(id),
+          file: None,
         });
       }
     }

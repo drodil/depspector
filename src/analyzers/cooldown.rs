@@ -66,6 +66,7 @@ impl PackageAnalyzer for CooldownAnalyzer {
         code: None,
         analyzer: Some(self.name().to_string()),
         id: Some(id),
+        file: None,
       });
     }
 

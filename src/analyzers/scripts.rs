@@ -55,6 +55,7 @@ impl PackageAnalyzer for ScriptsAnalyzer {
             code: Some(script_str.to_string()),
             analyzer: Some(self.name().to_string()),
             id: Some(id),
+            file: None,
           });
         }
       }

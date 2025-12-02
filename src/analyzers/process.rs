@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest};
-use crate::util::generate_issue_id;
+use crate::util::{generate_issue_id, LineIndex};
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -35,19 +35,14 @@ struct ProcessVisitor<'a> {
   issues: Vec<Issue>,
   analyzer_name: &'static str,
   file_path: &'a str,
-  source: &'a str,
+  line_index: LineIndex,
   has_child_process_import: bool,
 }
 
-impl<'a> ProcessVisitor<'a> {
-  fn get_code_at_line(&self, line: usize) -> String {
-    self.source.lines().nth(line.saturating_sub(1)).unwrap_or("").trim().to_string()
-  }
-
+impl ProcessVisitor<'_> {
   fn check_for_suspicious_command(&self, args: &[ArgInfo]) -> bool {
     for arg in args {
       if let ArgInfo::StringLiteral(cmd) = arg {
-        // Check for suspicious command patterns
         let suspicious_patterns =
           ["curl", "wget", "nc", "netcat", "bash", "sh", "cmd", "powershell"];
         let dangerous_patterns = ["http", "ftp", "://", "|"];
@@ -98,9 +93,10 @@ impl AstVisitor for ProcessVisitor<'_> {
           line,
           message,
           severity: Severity::Critical,
-          code: Some(self.get_code_at_line(line)),
+          code: Some(self.line_index.get_line(line)),
           analyzer: Some(self.analyzer_name.to_string()),
           id: Some(id),
+          file: None,
         });
       }
 
@@ -118,19 +114,18 @@ impl AstVisitor for ProcessVisitor<'_> {
               line,
               message,
               severity: Severity::Critical,
-              code: Some(self.get_code_at_line(line)),
+              code: Some(self.line_index.get_line(line)),
               analyzer: Some(self.analyzer_name.to_string()),
               id: Some(id),
+              file: None,
             });
           }
         }
       }
     }
 
-    // Check for direct calls to spawn/exec etc. (after import or standalone)
     if let Some(ref callee) = call.callee_name {
       if call.object_name.is_none() && CHILD_PROCESS_METHODS.contains(&callee.as_str()) {
-        // Standalone call like exec('cmd')
         if self.has_child_process_import || self.check_for_suspicious_command(&call.arguments) {
           let message = format!("Suspicious process spawning detected via {}", callee);
 
@@ -141,13 +136,13 @@ impl AstVisitor for ProcessVisitor<'_> {
             line,
             message,
             severity: Severity::Critical,
-            code: Some(self.get_code_at_line(line)),
+            code: Some(self.line_index.get_line(line)),
             analyzer: Some(self.analyzer_name.to_string()),
             id: Some(id),
+            file: None,
           });
         }
 
-        // Check for suspicious commands in arguments
         if self.check_for_suspicious_command(&call.arguments) {
           let message =
             "Suspicious shell command pattern detected (potential remote code execution)"
@@ -161,9 +156,10 @@ impl AstVisitor for ProcessVisitor<'_> {
               line,
               message,
               severity: Severity::Critical,
-              code: Some(self.get_code_at_line(line)),
+              code: Some(self.line_index.get_line(line)),
               analyzer: Some(self.analyzer_name.to_string()),
               id: Some(id),
+              file: None,
             });
           }
         }
@@ -191,7 +187,7 @@ impl FileAnalyzer for ProcessAnalyzer {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
-      source: context.source,
+      line_index: LineIndex::new(context.source),
       has_child_process_import: false,
     };
 
@@ -201,27 +197,37 @@ impl FileAnalyzer for ProcessAnalyzer {
     // Efficiently scan for shell: true
     for (line_num, line) in context.source.lines().enumerate() {
       if line.contains("shell") && line.contains("true") {
-         // Simple check to avoid false positives in comments/strings would be good,
-         // but for performance we stick to simple string matching for now,
-         // matching the previous behavior but much faster.
-         // To be slightly safer, we could check if it looks like a property `shell: true`
-         // or `shell:true`.
-         if line.contains("shell: true") || line.contains("shell:true") || (line.contains("shell") && line.contains("true") && line.contains("{")) {
-            let message = "Process spawning with shell: true detected (command injection risk)".to_string();
-            let id = generate_issue_id(self.name(), context.file_path.to_str().unwrap_or(""), line_num + 1, &message);
+        // Simple check to avoid false positives in comments/strings would be good,
+        // but for performance we stick to simple string matching for now,
+        // matching the previous behavior but much faster.
+        // To be slightly safer, we could check if it looks like a property `shell: true`
+        // or `shell:true`.
+        if line.contains("shell: true")
+          || line.contains("shell:true")
+          || (line.contains("shell") && line.contains("true") && line.contains("{"))
+        {
+          let message =
+            "Process spawning with shell: true detected (command injection risk)".to_string();
+          let id = generate_issue_id(
+            self.name(),
+            context.file_path.to_str().unwrap_or(""),
+            line_num + 1,
+            &message,
+          );
 
-            if !visitor.issues.iter().any(|i| i.line == line_num + 1 && i.message == message) {
-               visitor.issues.push(Issue {
-                  issue_type: self.name().to_string(),
-                  line: line_num + 1,
-                  message,
-                  severity: Severity::High,
-                  code: Some(line.trim().to_string()),
-                  analyzer: Some(self.name().to_string()),
-                  id: Some(id),
-               });
-            }
-         }
+          if !visitor.issues.iter().any(|i| i.line == line_num + 1 && i.message == message) {
+            visitor.issues.push(Issue {
+              issue_type: self.name().to_string(),
+              line: line_num + 1,
+              message,
+              severity: Severity::High,
+              code: Some(line.trim().to_string()),
+              analyzer: Some(self.name().to_string()),
+              id: Some(id),
+              file: None,
+            });
+          }
+        }
       }
     }
 

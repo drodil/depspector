@@ -99,11 +99,14 @@ pub struct Issue {
   pub analyzer: Option<String>,
   #[serde(default)]
   pub id: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub file: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisResult {
-  pub file: String,
+  #[serde(rename = "file")]
+  pub package_path: String,
 
   #[serde(default)]
   pub package: Option<String>,
@@ -115,13 +118,18 @@ pub struct AnalysisResult {
 }
 
 impl AnalysisResult {
-  pub fn new(file: &str) -> Self {
-    Self { file: file.to_string(), package: None, issues: vec![], is_from_cache: false }
+  pub fn new(package_path: &str) -> Self {
+    Self {
+      package_path: package_path.to_string(),
+      package: None,
+      issues: vec![],
+      is_from_cache: false,
+    }
   }
 
-  pub fn with_package(file: &str, package: &str) -> Self {
+  pub fn with_package(package_path: &str, package: &str) -> Self {
     Self {
-      file: file.to_string(),
+      package_path: package_path.to_string(),
       package: Some(package.to_string()),
       issues: vec![],
       is_from_cache: false,
@@ -347,25 +355,17 @@ impl Analyzer {
     let file_size = source.len();
     let max_file_size = config.max_file_size;
 
-    // Check if any AST analyzer will run on this file
     let needs_ast = file_size <= max_file_size && self.file_analyzers.iter().any(|a| a.uses_ast());
 
-    // Parse AST once if needed, share across all analyzers
     let parsed_ast = if needs_ast {
-      // Optimization: Skip AST parsing for minified files
-      if crate::util::is_minified(source) {
-        log::debug!("Skipping AST parsing for minified file: {}", file_path.display());
-        None
-      } else {
-        let ast_start = std::time::Instant::now();
-        let result = crate::ast::ParsedAst::parse_with_timeout(source, config.ast_timeout_ms);
-        if let Some(b) = benchmark {
-          if result.is_some() {
-            b.record_ast_parse(&file_path.to_string_lossy(), ast_start.elapsed(), file_size);
-          }
+      let ast_start = std::time::Instant::now();
+      let result = crate::ast::ParsedAst::parse_with_timeout(source, config.ast_timeout_ms);
+      if let Some(b) = benchmark {
+        if result.is_some() {
+          b.record_ast_parse(&file_path.to_string_lossy(), ast_start.elapsed(), file_size);
         }
-        result
       }
+      result
     } else {
       None
     };
@@ -625,10 +625,16 @@ impl Analyzer {
     };
 
     let benchmark = ctx.benchmark.as_ref();
-    let (package_issues, js_entries) = tokio::join!(
+    let (mut package_issues, js_entries) = tokio::join!(
       self.analyze_package_with_benchmark(&pkg_ctx, benchmark),
       Self::discover_js_files(&pkg_path_clone, ctx.config)
     );
+
+    for issue in &mut package_issues {
+      if issue.file.is_none() {
+        issue.file = Some("package.json".to_string());
+      }
+    }
 
     if let Some(ref b) = ctx.benchmark {
       b.add_files(js_entries.len());
@@ -641,7 +647,7 @@ impl Analyzer {
     all_issues.retain(|i| i.id.as_ref().map(|id| !ctx.ignore_issues.contains(id)).unwrap_or(true));
 
     let result = AnalysisResult {
-      file: normalize_path(&wi.pkg_path.to_string_lossy()),
+      package_path: normalize_path(&wi.pkg_path.to_string_lossy()),
       package: Some(wi.name.clone()),
       issues: all_issues,
       is_from_cache: false,
@@ -724,6 +730,10 @@ impl Analyzer {
 
         let mut file_issues =
           self.analyze_file_with_benchmark(&source, js_path, ctx.config, ctx.benchmark.as_ref());
+        let file_path_str = normalize_path(&js_path.to_string_lossy());
+        for issue in &mut file_issues {
+          issue.file = Some(file_path_str.clone());
+        }
         file_issues
           .retain(|i| i.id.as_ref().map(|id| !ctx.ignore_issues.contains(id)).unwrap_or(true));
         Some(file_issues)

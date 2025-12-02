@@ -123,7 +123,8 @@ impl Reporter {
             Severity::Low => "LOW".white(),
           };
 
-          let location = format!("{}:{}", result.file, issue.line);
+          let file_path = issue.file.as_ref().unwrap_or(&result.package_path);
+          let location = format!("{}:{}", file_path, issue.line);
           let location_display = if result.is_from_cache {
             format!("  {} {}", "↺".dimmed(), location.dimmed())
           } else {
@@ -188,7 +189,7 @@ mod tests {
     let reporter = Reporter::new();
 
     let results = vec![AnalysisResult {
-      file: "test.js".to_string(),
+      package_path: "test-pkg".to_string(),
       package: Some("test-pkg".to_string()),
       issues: vec![Issue {
         issue_type: "test".to_string(),
@@ -198,6 +199,7 @@ mod tests {
         code: None,
         analyzer: None,
         id: None,
+        file: None,
       }],
       is_from_cache: false,
     }];
@@ -213,7 +215,7 @@ mod tests {
     let reporter = Reporter::new();
 
     let results = vec![AnalysisResult {
-      file: "test.js".to_string(),
+      package_path: "test-pkg".to_string(),
       package: Some("test-pkg".to_string()),
       issues: vec![Issue {
         issue_type: "test".to_string(),
@@ -223,6 +225,7 @@ mod tests {
         code: None,
         analyzer: None,
         id: None,
+        file: None,
       }],
       is_from_cache: false,
     }];
