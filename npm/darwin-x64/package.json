@@ -1,10 +1,16 @@
 {
   "name": "@drodil/depspector-darwin-x64",
-  "version": "0.0.3",
-  "os": ["darwin"],
-  "cpu": ["x64"],
+  "version": "0.0.4",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
   "main": "depspector.darwin-x64.node",
-  "files": ["depspector.darwin-x64.node"],
+  "files": [
+    "depspector.darwin-x64.node"
+  ],
   "description": "x86_64-apple-darwin binary for depspector",
   "license": "MIT",
   "engines": {

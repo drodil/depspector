@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.4](https://github.com/user/depspector/compare/v0.0.3...v0.0.4) (2025-12-02)
+
+
+### Features
+
+* deprecated analyzer + analyzer selector cli ([8806ec0](https://github.com/user/depspector/commit/8806ec082d88958ebe71f20b1e9afa52eca66831))
+* move to use rust for speed ([b16a29f](https://github.com/user/depspector/commit/b16a29fa6ffba694fdf8d3455dd35c88268145d7))
+
+
+### Bug Fixes
+
+* disable lto in gnu builds ([0bdd322](https://github.com/user/depspector/commit/0bdd3225489b1a9bdb7ae89f2ed13a835becc2a6))
+* eslint + prettier ([4bf7afa](https://github.com/user/depspector/commit/4bf7afadbb3bfd307776754d46fcab94d089fdb3))
+* install instructions + parallel diffs ([59fae2d](https://github.com/user/depspector/commit/59fae2d333dda6b89d539a4e8f6885da2e16d8a4))
+* linux to use nightly rust ([1868e8d](https://github.com/user/depspector/commit/1868e8d4a1db7c287f0733108ad75e8b94e9a4e1))
+* rust action ([802c537](https://github.com/user/depspector/commit/802c537085ff9eb61ead3be17b6df9e64a1368dc))
+
 ### [0.0.3](https://github.com/drodil/depspector/compare/v0.0.2...v0.0.3) (2025-12-01)
 
 
