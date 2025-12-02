@@ -51,15 +51,15 @@ Built with **Rust** for maximum performance and compiled to native Node.js bindi
 NPM
 
 ```bash
-npm install -g @drodil/depspector
+npm install -g depspector
 # OR
-npm install --save-dev @drodil/depspector
+npm install --save-dev depspector
 ```
 
 YARN
 
 ```bash
-yarn add --dev @drodil/depspector
+yarn add --dev depspector
 ```
 
 ## Usage
@@ -183,17 +183,18 @@ Create a `.depspectorrc` file in your project root:
 
 ### Configuration Options
 
-| Option                   | Type                                                 | Default         | Description                                                                                    |
-| ------------------------ | ---------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------- |
-| `analyzers`              | Object                                               | All enabled     | Configure individual analyzers (see [Analyzers](#analyzers) table).                            |
-| `exclude`                | Array\<string\>                                      | `[]`            | Package names to exclude from scanning.                                                        |
-| `ignoreIssues`           | Array\<string\>                                      | `[]`            | Issue IDs to ignore. Issue IDs are displayed in brackets after each finding in the report.     |
-| `exitWithFailureOnLevel` | `"critical" \| "high" \| "medium" \| "low" \| "off"` | `"high"`        | Exit with code 1 if issues at this severity level or higher are found. Use `"off"` to disable. |
-| `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.      |
-| `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.      |
-| `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                            |
-| `maxFileSize`            | number                                               | `5242880`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 5MB.     |
-| `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                        |
+| Option                   | Type                                                 | Default         | Description                                                                                                                  |
+| ------------------------ | ---------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `analyzers`              | Object                                               | All enabled     | Configure individual analyzers (see [Analyzers](#analyzers) table).                                                          |
+| `exclude`                | Array\<string\>                                      | `[]`            | Package names to exclude from scanning.                                                                                      |
+| `ignoreIssues`           | Array\<string\>                                      | `[]`            | Issue IDs to ignore. Issue IDs are displayed in brackets after each finding in the report.                                   |
+| `exitWithFailureOnLevel` | `"critical" \| "high" \| "medium" \| "low" \| "off"` | `"high"`        | Exit with code 1 if issues at this severity level or higher are found. Use `"off"` to disable.                               |
+| `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.                                    |
+| `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.                                    |
+| `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                                                          |
+| `maxFileSize`            | number                                               | `1048576`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 1MB.                                   |
+| `astTimeoutMs`           | number                                               | `0`             | Timeout in milliseconds for AST parsing per file. 0 means no timeout. Useful for skipping files that take too long to parse. |
+| `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                                                      |
 
 ### NPM Registry Configuration
 

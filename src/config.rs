@@ -91,6 +91,8 @@ pub struct Config {
   pub analyzers: HashMap<String, AnalyzerConfig>,
   #[serde(default = "default_max_file_size")]
   pub max_file_size: usize,
+  #[serde(default)]
+  pub ast_timeout_ms: u64,
 }
 
 fn default_cache_dir() -> String {
@@ -102,7 +104,7 @@ fn default_report_level() -> String {
 }
 
 fn default_max_file_size() -> usize {
-  5 * 1024 * 1024 // 5 MB default
+  1024 * 1024 // 1 MB default - larger files are skipped for AST analysis
 }
 
 impl Default for Config {
@@ -117,6 +119,7 @@ impl Default for Config {
       npm: NpmConfig::default(),
       analyzers: HashMap::new(),
       max_file_size: default_max_file_size(),
+      ast_timeout_ms: 0,
     }
   }
 }

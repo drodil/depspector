@@ -20,6 +20,12 @@ pub struct BenchmarkResults {
   pub file_read_time: Duration,
   /// Time spent prefetching registry data
   pub prefetch_time: Duration,
+  /// Total time spent parsing AST
+  pub ast_parse_time: Duration,
+  /// Number of files parsed with AST
+  pub ast_files_parsed: usize,
+  /// Slowest files to parse (path, duration, size)
+  pub slowest_ast_parses: Vec<(String, Duration, usize)>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -109,6 +115,16 @@ impl BenchmarkCollector {
     results.total_bytes += bytes;
   }
 
+  pub fn record_ast_parse(&self, file_path: &str, duration: Duration, file_size: usize) {
+    let mut results = self.inner.lock().unwrap();
+    results.ast_parse_time += duration;
+    results.ast_files_parsed += 1;
+
+    results.slowest_ast_parses.push((file_path.to_string(), duration, file_size));
+    results.slowest_ast_parses.sort_by(|a, b| b.1.cmp(&a.1));
+    results.slowest_ast_parses.truncate(10);
+  }
+
   pub fn get_results(&self) -> BenchmarkResults {
     let results = self.inner.lock().unwrap();
     BenchmarkResults {
@@ -119,6 +135,9 @@ impl BenchmarkCollector {
       discovery_time: results.discovery_time,
       file_read_time: results.file_read_time,
       prefetch_time: results.prefetch_time,
+      ast_parse_time: results.ast_parse_time,
+      ast_files_parsed: results.ast_files_parsed,
+      slowest_ast_parses: results.slowest_ast_parses.clone(),
     }
   }
 }
@@ -129,7 +148,7 @@ pub fn print_benchmark_report(results: &BenchmarkResults, total_duration: Durati
   println!("{}", "═".repeat(70).bright_blue());
 
   println!("\n{}", "Summary".bold().underline());
-  println!("  Total time:        {:>10.2?}", total_duration);
+  println!("  Wall-clock time:   {:>10.2?}", total_duration);
   println!("  Packages analyzed: {:>10}", results.total_packages);
   println!("  Files analyzed:    {:>10}", results.total_files);
   println!("  Bytes processed:   {:>10}", format_bytes(results.total_bytes));
@@ -139,7 +158,17 @@ pub fn print_benchmark_report(results: &BenchmarkResults, total_duration: Durati
     println!("  Throughput:        {:>10.2} MB/s", throughput);
   }
 
-  println!("\n{}", "Phase Timing".bold().underline());
+  // Calculate cumulative time (sum of all parallel work)
+  let cumulative_analysis: Duration = results.analyzers.values().map(|s| s.total_time).sum();
+
+  // Estimate parallelism factor
+  let parallelism = if total_duration.as_nanos() > 0 {
+    cumulative_analysis.as_secs_f64() / total_duration.as_secs_f64()
+  } else {
+    1.0
+  };
+
+  println!("\n{}", "Phase Timing (wall-clock)".bold().underline());
   println!(
     "  Discovery:         {:>10.2?} ({:>5.1}%)",
     results.discovery_time,
@@ -156,17 +185,37 @@ pub fn print_benchmark_report(results: &BenchmarkResults, total_duration: Durati
     percentage(results.file_read_time, total_duration)
   );
 
-  let analysis_time: Duration = results.analyzers.values().map(|s| s.total_time).sum();
-  println!(
-    "  Analysis:          {:>10.2?} ({:>5.1}%)",
-    analysis_time,
-    percentage(analysis_time, total_duration)
-  );
+  // AST Parsing section
+  if results.ast_files_parsed > 0 {
+    println!("\n{}", "AST Parsing".bold().underline());
+    println!("  Files parsed:      {:>10}", results.ast_files_parsed);
+    println!("  Total parse time:  {:>10.2?} (cumulative)", results.ast_parse_time);
+    let avg_parse = results.ast_parse_time / results.ast_files_parsed as u32;
+    println!("  Avg parse time:    {:>10.2?}", avg_parse);
 
-  println!("\n{}", "Analyzer Performance".bold().underline());
+    if !results.slowest_ast_parses.is_empty() {
+      println!("\n  {}", "Slowest files to parse:".dimmed());
+      for (path, duration, size) in results.slowest_ast_parses.iter().take(5) {
+        let line = format!("    {:>10.2?}  {:>10}  {}", duration, format_bytes(*size), path);
+        if *duration > Duration::from_millis(100) {
+          println!("{}", line.red());
+        } else if *duration > Duration::from_millis(10) {
+          println!("{}", line.yellow());
+        } else {
+          println!("{}", line);
+        }
+      }
+    }
+  }
+
+  println!(
+    "\n{} {}",
+    "Analyzer Performance".bold().underline(),
+    "(cumulative time across parallel executions)".dimmed()
+  );
   println!(
     "  {:<20} {:>10} {:>10} {:>10} {:>10} {:>8}",
-    "Analyzer", "Total", "Avg", "Min", "Max", "Issues"
+    "Analyzer", "Cumul.", "Avg", "Min", "Max", "Issues"
   );
   println!("  {}", "─".repeat(68));
 
@@ -174,9 +223,11 @@ pub fn print_benchmark_report(results: &BenchmarkResults, total_duration: Durati
   analyzers.sort_by(|a, b| b.1.total_time.cmp(&a.1.total_time));
 
   for (name, stats) in analyzers {
-    let color = if stats.total_time > Duration::from_secs(1) {
+    // Color based on average time per invocation, not total
+    let avg = stats.avg_time();
+    let color = if avg > Duration::from_secs(1) {
       "red"
-    } else if stats.total_time > Duration::from_millis(500) {
+    } else if avg > Duration::from_millis(100) {
       "yellow"
     } else {
       "green"
@@ -186,7 +237,7 @@ pub fn print_benchmark_report(results: &BenchmarkResults, total_duration: Durati
       "  {:<20} {:>10.2?} {:>10.2?} {:>10.2?} {:>10.2?} {:>8}",
       name,
       stats.total_time,
-      stats.avg_time(),
+      avg,
       stats.min_time.unwrap_or(Duration::ZERO),
       stats.max_time.unwrap_or(Duration::ZERO),
       stats.issues_found
@@ -199,23 +250,35 @@ pub fn print_benchmark_report(results: &BenchmarkResults, total_duration: Durati
     }
   }
 
-  println!("\n{}", "Hotspots".bold().underline());
+  println!(
+    "\n  {} Cumulative: {:.2?} | Parallelism: {:.1}x",
+    "∑".dimmed(),
+    cumulative_analysis,
+    parallelism
+  );
 
-  let mut hotspots: Vec<_> =
-    results.analyzers.iter().filter(|(_, s)| s.total_time > Duration::from_millis(100)).collect();
-  hotspots.sort_by(|a, b| b.1.total_time.cmp(&a.1.total_time));
+  println!("\n{}", "Slowest Analyzers (by avg time)".bold().underline());
 
-  if hotspots.is_empty() {
-    println!("  {} No significant hotspots detected", "✓".green());
+  let mut by_avg: Vec<_> = results
+    .analyzers
+    .iter()
+    .filter(|(_, s)| s.invocations > 0 && s.avg_time() > Duration::from_millis(1))
+    .collect();
+  by_avg.sort_by(|a, b| b.1.avg_time().cmp(&a.1.avg_time()));
+
+  if by_avg.is_empty() {
+    println!("  {} All analyzers are fast (<1ms avg)", "✓".green());
   } else {
-    for (name, stats) in hotspots.iter().take(3) {
-      let pct = percentage(stats.total_time, total_duration);
+    for (name, stats) in by_avg.iter().take(5) {
+      let avg = stats.avg_time();
+      let max = stats.max_time.unwrap_or(Duration::ZERO);
       println!(
-        "  {} {} takes {:.1}% of total time ({:.2?})",
+        "  {} {:<20} avg: {:>10.2?}  max: {:>10.2?}  ({} calls)",
         "→".yellow(),
         name.bold(),
-        pct,
-        stats.total_time
+        avg,
+        max,
+        stats.invocations
       );
     }
   }

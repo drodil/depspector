@@ -351,7 +351,18 @@ impl Analyzer {
     let needs_ast = file_size <= max_file_size && self.file_analyzers.iter().any(|a| a.uses_ast());
 
     // Parse AST once if needed, share across all analyzers
-    let parsed_ast = if needs_ast { crate::ast::ParsedAst::parse(source) } else { None };
+    let parsed_ast = if needs_ast {
+      let ast_start = std::time::Instant::now();
+      let result = crate::ast::ParsedAst::parse_with_timeout(source, config.ast_timeout_ms);
+      if let Some(b) = benchmark {
+        if result.is_some() {
+          b.record_ast_parse(&file_path.to_string_lossy(), ast_start.elapsed(), file_size);
+        }
+      }
+      result
+    } else {
+      None
+    };
 
     let context = FileContext {
       source,

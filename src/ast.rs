@@ -8,6 +8,64 @@ fn get_javascript_language() -> Language {
   tree_sitter_javascript::LANGUAGE.into()
 }
 
+/// Flags to indicate which AST node types an analyzer is interested in.
+/// This allows skipping extraction/iteration of unused node types for better performance.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NodeInterest {
+  pub calls: bool,
+  pub member_accesses: bool,
+  pub assignments: bool,
+  pub destructures: bool,
+  pub string_literals: bool,
+}
+
+impl NodeInterest {
+  pub const fn all() -> Self {
+    Self {
+      calls: true,
+      member_accesses: true,
+      assignments: true,
+      destructures: true,
+      string_literals: true,
+    }
+  }
+
+  pub const fn none() -> Self {
+    Self {
+      calls: false,
+      member_accesses: false,
+      assignments: false,
+      destructures: false,
+      string_literals: false,
+    }
+  }
+
+  pub const fn with_calls(mut self) -> Self {
+    self.calls = true;
+    self
+  }
+
+  pub const fn with_member_accesses(mut self) -> Self {
+    self.member_accesses = true;
+    self
+  }
+
+  pub const fn with_assignments(mut self) -> Self {
+    self.assignments = true;
+    self
+  }
+
+  pub const fn with_destructures(mut self) -> Self {
+    self.destructures = true;
+    self
+  }
+
+  pub const fn with_string_literals(mut self) -> Self {
+    self.string_literals = true;
+    self
+  }
+}
+
 thread_local! {
   static PARSER: RefCell<Parser> = RefCell::new({
     let mut parser = Parser::new();
@@ -107,19 +165,34 @@ pub struct ParsedAst {
 
 impl ParsedAst {
   /// Parse source code once and extract all AST events.
+  /// Uses the default timeout (no timeout).
   pub fn parse(code: &str) -> Option<Self> {
+    Self::parse_with_timeout(code, 0)
+  }
+
+  /// Parse source code with a configurable timeout in milliseconds.
+  /// If timeout_ms is 0, no timeout is applied.
+  pub fn parse_with_timeout(code: &str, timeout_ms: u64) -> Option<Self> {
     reset_ast_counter();
     let start = Instant::now();
 
     let tree = PARSER.with(|parser| {
       let mut parser = parser.borrow_mut();
-      parser.parse(code, None)
+      if timeout_ms > 0 {
+        parser.set_timeout_micros(timeout_ms * 1000);
+      } else {
+        parser.set_timeout_micros(0);
+      }
+      let result = parser.parse(code, None);
+      // Reset timeout after parsing
+      parser.set_timeout_micros(0);
+      result
     });
 
     let tree = match tree {
       Some(tree) => tree,
       None => {
-        log::debug!("[AST] Failed to parse code");
+        log::debug!("[AST] Failed to parse code (possibly timed out after {}ms)", timeout_ms);
         return None;
       }
     };
@@ -198,28 +271,59 @@ pub trait AstVisitor {
 }
 
 pub fn walk_parsed_ast<V: AstVisitor>(parsed: &ParsedAst, visitor: &mut V) {
-  for call in &parsed.calls {
-    visitor.visit_call(call);
+  walk_parsed_ast_filtered(parsed, visitor, NodeInterest::all());
+}
+
+/// Walk the pre-parsed AST, only visiting node types specified in `interest`.
+/// This is more efficient when an analyzer only needs specific node types.
+pub fn walk_parsed_ast_filtered<V: AstVisitor>(
+  parsed: &ParsedAst,
+  visitor: &mut V,
+  interest: NodeInterest,
+) {
+  if interest.calls {
+    for call in &parsed.calls {
+      visitor.visit_call(call);
+    }
   }
-  for member in &parsed.member_accesses {
-    visitor.visit_member_access(member);
+  if interest.member_accesses {
+    for member in &parsed.member_accesses {
+      visitor.visit_member_access(member);
+    }
   }
-  for assign in &parsed.assignments {
-    visitor.visit_assign(assign);
+  if interest.assignments {
+    for assign in &parsed.assignments {
+      visitor.visit_assign(assign);
+    }
   }
-  for destructure in &parsed.destructures {
-    visitor.visit_destructure(destructure);
+  if interest.destructures {
+    for destructure in &parsed.destructures {
+      visitor.visit_destructure(destructure);
+    }
   }
-  for string_lit in &parsed.string_literals {
-    visitor.visit_string_literal(&string_lit.value, string_lit.line);
+  if interest.string_literals {
+    for string_lit in &parsed.string_literals {
+      visitor.visit_string_literal(&string_lit.value, string_lit.line);
+    }
   }
 }
 
 pub fn walk_ast<V: AstVisitor>(parsed_ast: Option<&ParsedAst>, source: &str, visitor: &mut V) {
+  walk_ast_filtered(parsed_ast, source, visitor, NodeInterest::all());
+}
+
+/// Walk the AST, only visiting node types specified in `interest`.
+/// If a pre-parsed AST is provided, it will be used; otherwise parses from source.
+pub fn walk_ast_filtered<V: AstVisitor>(
+  parsed_ast: Option<&ParsedAst>,
+  source: &str,
+  visitor: &mut V,
+  interest: NodeInterest,
+) {
   if let Some(parsed) = parsed_ast {
-    walk_parsed_ast(parsed, visitor);
+    walk_parsed_ast_filtered(parsed, visitor, interest);
   } else if let Some(parsed) = ParsedAst::parse(source) {
-    walk_parsed_ast(&parsed, visitor);
+    walk_parsed_ast_filtered(&parsed, visitor, interest);
   }
 }
 
@@ -547,18 +651,28 @@ mod tests {
 
   struct TestVisitor {
     calls: Vec<CallInfo>,
+    strings: Vec<String>,
+    members: Vec<MemberAccessInfo>,
   }
 
   impl AstVisitor for TestVisitor {
     fn visit_call(&mut self, info: &CallInfo) {
       self.calls.push(info.clone());
     }
+
+    fn visit_string_literal(&mut self, value: &str, _line: usize) {
+      self.strings.push(value.to_string());
+    }
+
+    fn visit_member_access(&mut self, info: &MemberAccessInfo) {
+      self.members.push(info.clone());
+    }
   }
 
   #[test]
   fn test_parse_simple() {
     let code = "console.log('hello');";
-    let mut visitor = TestVisitor { calls: Vec::new() };
+    let mut visitor = TestVisitor { calls: Vec::new(), strings: Vec::new(), members: Vec::new() };
     assert!(try_parse_and_walk(code, &mut visitor));
     assert_eq!(visitor.calls.len(), 1);
     assert_eq!(visitor.calls[0].callee_name, Some("log".to_string()));
@@ -568,7 +682,7 @@ mod tests {
   #[test]
   fn test_parse_require() {
     let code = "const fs = require('fs');";
-    let mut visitor = TestVisitor { calls: Vec::new() };
+    let mut visitor = TestVisitor { calls: Vec::new(), strings: Vec::new(), members: Vec::new() };
     assert!(try_parse_and_walk(code, &mut visitor));
     assert_eq!(visitor.calls.len(), 1);
     assert_eq!(visitor.calls[0].callee_name, Some("require".to_string()));
@@ -577,7 +691,60 @@ mod tests {
   #[test]
   fn test_parse_member() {
     let code = "process.env.PATH";
-    let mut visitor = TestVisitor { calls: Vec::new() };
+    let mut visitor = TestVisitor { calls: Vec::new(), strings: Vec::new(), members: Vec::new() };
     assert!(try_parse_and_walk(code, &mut visitor));
+  }
+
+  #[test]
+  fn test_node_interest_filters_calls_only() {
+    let code = r#"
+      console.log('hello');
+      const x = process.env.FOO;
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    assert!(!parsed.calls.is_empty());
+    assert!(!parsed.string_literals.is_empty());
+    assert!(!parsed.member_accesses.is_empty());
+
+    let mut visitor = TestVisitor { calls: Vec::new(), strings: Vec::new(), members: Vec::new() };
+    let interest = NodeInterest::none().with_calls();
+    walk_parsed_ast_filtered(&parsed, &mut visitor, interest);
+
+    assert!(!visitor.calls.is_empty());
+    assert!(visitor.strings.is_empty()); // Should not be visited
+    assert!(visitor.members.is_empty()); // Should not be visited
+  }
+
+  #[test]
+  fn test_node_interest_filters_strings_only() {
+    let code = r#"
+      const url = "https://example.com";
+      fetch(url);
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    let mut visitor = TestVisitor { calls: Vec::new(), strings: Vec::new(), members: Vec::new() };
+    let interest = NodeInterest::none().with_string_literals();
+    walk_parsed_ast_filtered(&parsed, &mut visitor, interest);
+
+    assert!(visitor.calls.is_empty()); // Should not be visited
+    assert!(!visitor.strings.is_empty());
+  }
+
+  #[test]
+  fn test_node_interest_all() {
+    let code = r#"
+      console.log('hello');
+      const x = obj.prop;
+    "#;
+    let parsed = ParsedAst::parse(code).unwrap();
+
+    let mut visitor = TestVisitor { calls: Vec::new(), strings: Vec::new(), members: Vec::new() };
+    walk_parsed_ast_filtered(&parsed, &mut visitor, NodeInterest::all());
+
+    assert!(!visitor.calls.is_empty());
+    assert!(!visitor.strings.is_empty());
+    assert!(!visitor.members.is_empty());
   }
 }

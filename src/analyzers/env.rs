@@ -1,7 +1,7 @@
 use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
-use crate::ast::{walk_ast, AstVisitor, DestructureInfo, MemberAccessInfo};
+use crate::ast::{walk_ast_filtered, AstVisitor, DestructureInfo, MemberAccessInfo, NodeInterest};
 use crate::util::generate_issue_id;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
@@ -98,7 +98,8 @@ impl FileAnalyzer for EnvAnalyzer {
       allowed_vars,
     };
 
-    walk_ast(context.parsed_ast, context.source, &mut visitor);
+    let interest = NodeInterest::none().with_member_accesses().with_destructures();
+    walk_ast_filtered(context.parsed_ast, context.source, &mut visitor, interest);
 
     visitor.issues
   }

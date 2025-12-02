@@ -1,7 +1,7 @@
 use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
-use crate::ast::{walk_ast, ArgInfo, AstVisitor, CallInfo};
+use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest};
 use crate::util::generate_issue_id;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
@@ -221,7 +221,8 @@ impl FileAnalyzer for ProcessAnalyzer {
       has_child_process_import: false,
     };
 
-    walk_ast(context.parsed_ast, context.source, &mut visitor);
+    let interest = NodeInterest::none().with_calls().with_string_literals();
+    walk_ast_filtered(context.parsed_ast, context.source, &mut visitor, interest);
 
     visitor.issues
   }
