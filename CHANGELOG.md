@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.6](https://github.com/drodil/depspector/compare/v0.0.5...v0.0.6) (2025-12-02)
+
+
+### Bug Fixes
+
+* binary publish ([d538b08](https://github.com/drodil/depspector/commit/d538b08e6373bce0577924f7b486076f89ce81b6))
+* readme + lock file ([206bd18](https://github.com/drodil/depspector/commit/206bd18f65489cf0e5839845c0285862bef71d94))
+
 ### [0.0.5](https://github.com/drodil/depspector/compare/v0.0.4...v0.0.5) (2025-12-02)
 
 
