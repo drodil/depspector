@@ -67,29 +67,29 @@ yarn add --dev @drodil/depspector
 Run Depspector in your project root:
 
 ```bash
-npx @drodil/depspector
+npx depspector
 ```
 
 ### Examples
 
 ```bash
 # Run with verbose output
-npx @drodil/depspector --verbose
+npx depspector --verbose
 
 # Clear cache before scanning
-npx @drodil/depspector --clear-cache
+npx depspector --clear-cache
 
 # Show only new issues
-npx @drodil/depspector --only-new
+npx depspector --only-new
 
 # Fail fast on first high severity issue
-npx @drodil/depspector --fail-fast
+npx depspector --fail-fast
 
 # Run in offline mode (skip network-dependent analyzers)
-npx @drodil/depspector --offline
+npx depspector --offline
 
 # Analyze a different project directory
-npx @drodil/depspector --cwd /path/to/project
+npx depspector --cwd /path/to/project
 ```
 
 ### Development Usage
