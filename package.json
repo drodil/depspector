@@ -26,7 +26,7 @@
     "artifacts": "napi artifacts",
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm",
+    "prepublishOnly": "napi prepublish -t npm --no-gh-release",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -66,7 +66,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/user/depspector.git"
+    "url": "https://github.com/drodil/depspector.git"
   },
   "keywords": [
     "npm",
