@@ -1,9 +1,6 @@
 {
   "name": "@drodil/depspector-win32-x64-msvc",
   "version": "0.0.6",
-  "os": [
-    "win32"
-  ],
   "cpu": [
     "x64"
   ],
@@ -11,16 +8,23 @@
   "files": [
     "depspector.win32-x64-msvc.node"
   ],
-  "description": "x86_64-pc-windows-msvc binary for depspector",
+  "description": "Dependency Inspector - A security analysis tool for npm packages",
+  "keywords": [
+    "npm",
+    "security",
+    "dependency",
+    "scanner",
+    "audit",
+    "malware",
+    "supply-chain"
+  ],
+  "author": "Heikki Hellgren (heiccih@gmail.com)",
   "license": "MIT",
-  "engines": {
-    "node": ">= 14"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/drodil/depspector.git"
+    "url": "https://github.com/drodil/depspector.git"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "os": [
+    "win32"
+  ]
 }

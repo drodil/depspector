@@ -75,10 +75,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-android-arm64')
-        const bindingPackageVersion = require('depspector-android-arm64/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-android-arm64')
+        const bindingPackageVersion = require('@drodil/depspector-android-arm64/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -91,10 +91,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-android-arm-eabi')
-        const bindingPackageVersion = require('depspector-android-arm-eabi/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-android-arm-eabi')
+        const bindingPackageVersion = require('@drodil/depspector-android-arm-eabi/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -112,10 +112,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-win32-x64-gnu')
-        const bindingPackageVersion = require('depspector-win32-x64-gnu/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-win32-x64-gnu')
+        const bindingPackageVersion = require('@drodil/depspector-win32-x64-gnu/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -128,10 +128,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-win32-x64-msvc')
-        const bindingPackageVersion = require('depspector-win32-x64-msvc/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-win32-x64-msvc')
+        const bindingPackageVersion = require('@drodil/depspector-win32-x64-msvc/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -145,10 +145,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-win32-ia32-msvc')
-        const bindingPackageVersion = require('depspector-win32-ia32-msvc/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-win32-ia32-msvc')
+        const bindingPackageVersion = require('@drodil/depspector-win32-ia32-msvc/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -161,10 +161,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-win32-arm64-msvc')
-        const bindingPackageVersion = require('depspector-win32-arm64-msvc/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-win32-arm64-msvc')
+        const bindingPackageVersion = require('@drodil/depspector-win32-arm64-msvc/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -180,10 +180,10 @@ function requireNative() {
       loadErrors.push(e)
     }
     try {
-      const binding = require('depspector-darwin-universal')
-      const bindingPackageVersion = require('depspector-darwin-universal/package.json').version
-      if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-        throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+      const binding = require('@drodil/depspector-darwin-universal')
+      const bindingPackageVersion = require('@drodil/depspector-darwin-universal/package.json').version
+      if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+        throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
       }
       return binding
     } catch (e) {
@@ -196,10 +196,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-darwin-x64')
-        const bindingPackageVersion = require('depspector-darwin-x64/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-darwin-x64')
+        const bindingPackageVersion = require('@drodil/depspector-darwin-x64/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -212,10 +212,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-darwin-arm64')
-        const bindingPackageVersion = require('depspector-darwin-arm64/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-darwin-arm64')
+        const bindingPackageVersion = require('@drodil/depspector-darwin-arm64/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -232,10 +232,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-freebsd-x64')
-        const bindingPackageVersion = require('depspector-freebsd-x64/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-freebsd-x64')
+        const bindingPackageVersion = require('@drodil/depspector-freebsd-x64/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -248,10 +248,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-freebsd-arm64')
-        const bindingPackageVersion = require('depspector-freebsd-arm64/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-freebsd-arm64')
+        const bindingPackageVersion = require('@drodil/depspector-freebsd-arm64/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -269,10 +269,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-x64-musl')
-          const bindingPackageVersion = require('depspector-linux-x64-musl/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-x64-musl')
+          const bindingPackageVersion = require('@drodil/depspector-linux-x64-musl/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -285,10 +285,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-x64-gnu')
-          const bindingPackageVersion = require('depspector-linux-x64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-x64-gnu')
+          const bindingPackageVersion = require('@drodil/depspector-linux-x64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -303,10 +303,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-arm64-musl')
-          const bindingPackageVersion = require('depspector-linux-arm64-musl/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-arm64-musl')
+          const bindingPackageVersion = require('@drodil/depspector-linux-arm64-musl/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -319,10 +319,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-arm64-gnu')
-          const bindingPackageVersion = require('depspector-linux-arm64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-arm64-gnu')
+          const bindingPackageVersion = require('@drodil/depspector-linux-arm64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -337,10 +337,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-arm-musleabihf')
-          const bindingPackageVersion = require('depspector-linux-arm-musleabihf/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-arm-musleabihf')
+          const bindingPackageVersion = require('@drodil/depspector-linux-arm-musleabihf/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -353,10 +353,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-arm-gnueabihf')
-          const bindingPackageVersion = require('depspector-linux-arm-gnueabihf/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-arm-gnueabihf')
+          const bindingPackageVersion = require('@drodil/depspector-linux-arm-gnueabihf/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -371,10 +371,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-loong64-musl')
-          const bindingPackageVersion = require('depspector-linux-loong64-musl/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-loong64-musl')
+          const bindingPackageVersion = require('@drodil/depspector-linux-loong64-musl/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -387,10 +387,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-loong64-gnu')
-          const bindingPackageVersion = require('depspector-linux-loong64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-loong64-gnu')
+          const bindingPackageVersion = require('@drodil/depspector-linux-loong64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -405,10 +405,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-riscv64-musl')
-          const bindingPackageVersion = require('depspector-linux-riscv64-musl/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-riscv64-musl')
+          const bindingPackageVersion = require('@drodil/depspector-linux-riscv64-musl/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -421,10 +421,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('depspector-linux-riscv64-gnu')
-          const bindingPackageVersion = require('depspector-linux-riscv64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('@drodil/depspector-linux-riscv64-gnu')
+          const bindingPackageVersion = require('@drodil/depspector-linux-riscv64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -438,10 +438,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-linux-ppc64-gnu')
-        const bindingPackageVersion = require('depspector-linux-ppc64-gnu/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-linux-ppc64-gnu')
+        const bindingPackageVersion = require('@drodil/depspector-linux-ppc64-gnu/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -454,10 +454,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-linux-s390x-gnu')
-        const bindingPackageVersion = require('depspector-linux-s390x-gnu/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-linux-s390x-gnu')
+        const bindingPackageVersion = require('@drodil/depspector-linux-s390x-gnu/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -474,10 +474,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-openharmony-arm64')
-        const bindingPackageVersion = require('depspector-openharmony-arm64/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-openharmony-arm64')
+        const bindingPackageVersion = require('@drodil/depspector-openharmony-arm64/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -490,10 +490,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-openharmony-x64')
-        const bindingPackageVersion = require('depspector-openharmony-x64/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-openharmony-x64')
+        const bindingPackageVersion = require('@drodil/depspector-openharmony-x64/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -506,10 +506,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('depspector-openharmony-arm')
-        const bindingPackageVersion = require('depspector-openharmony-arm/package.json').version
-        if (bindingPackageVersion !== '0.0.3' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.0.3 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('@drodil/depspector-openharmony-arm')
+        const bindingPackageVersion = require('@drodil/depspector-openharmony-arm/package.json').version
+        if (bindingPackageVersion !== '0.0.5' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.0.5 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -538,7 +538,7 @@ if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   }
   if (!nativeBinding) {
     try {
-      wasiBinding = require('depspector-wasm32-wasi')
+      wasiBinding = require('@drodil/depspector-wasm32-wasi')
       nativeBinding = wasiBinding
     } catch (err) {
       if (process.env.NAPI_RS_FORCE_WASI) {

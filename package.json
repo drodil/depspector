@@ -9,6 +9,7 @@
   },
   "napi": {
     "binaryName": "depspector",
+    "packageName": "@drodil/depspector",
     "targets": [
       "aarch64-apple-darwin",
       "x86_64-apple-darwin",
@@ -60,9 +61,9 @@
   "optionalDependencies": {
     "@drodil/depspector-darwin-arm64": "0.0.5",
     "@drodil/depspector-darwin-x64": "0.0.5",
-    "@drodil/depspector-linux-arm64-gnu": "0.0.5",
     "@drodil/depspector-linux-x64-gnu": "0.0.5",
     "@drodil/depspector-linux-x64-musl": "0.0.5",
+    "@drodil/depspector-linux-arm64-gnu": "0.0.5",
     "@drodil/depspector-win32-x64-msvc": "0.0.5"
   },
   "repository": {

@@ -1,9 +1,6 @@
 {
   "name": "@drodil/depspector-linux-x64-musl",
   "version": "0.0.6",
-  "os": [
-    "linux"
-  ],
   "cpu": [
     "x64"
   ],
@@ -11,19 +8,26 @@
   "files": [
     "depspector.linux-x64-musl.node"
   ],
-  "description": "x86_64-unknown-linux-musl binary for depspector",
-  "license": "MIT",
-  "engines": {
-    "node": ">= 14"
-  },
-  "libc": [
-    "musl"
+  "description": "Dependency Inspector - A security analysis tool for npm packages",
+  "keywords": [
+    "npm",
+    "security",
+    "dependency",
+    "scanner",
+    "audit",
+    "malware",
+    "supply-chain"
   ],
+  "author": "Heikki Hellgren (heiccih@gmail.com)",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/drodil/depspector.git"
+    "url": "https://github.com/drodil/depspector.git"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "os": [
+    "linux"
+  ],
+  "libc": [
+    "musl"
+  ]
 }
