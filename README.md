@@ -10,7 +10,7 @@ Built with **Rust** for maximum performance and compiled to native Node.js bindi
 
 ## Features
 
-- **🕵️ Deep Static Analysis**: Detects suspicious code patterns across 19 specialized analyzers:
+- **🕵️ Deep Static Analysis**: Detects suspicious code patterns across 20 specialized analyzers:
   - **Environment Variables**: Monitors `process.env` access with configurable whitelisting
   - **Network Activity**: Detects network requests (`fetch`, `http`, `axios`) with host whitelisting
   - **Dynamic Code Execution**: Flags `eval()`, `new Function()`, and `vm.runInContext()` usage
@@ -129,6 +129,7 @@ node bin.js [options]
 - `--concurrency <n>`: Maximum number of concurrent package analyses (defaults to number of CPU cores).
 - `--json <path>`: Output the analysis report as JSON to the specified file.
 - `--yaml <path>`: Output the analysis report as YAML to the specified file.
+- `--csv <path>`: Output the analysis report as CSV to the specified file. Each row contains: package, file, line, severity, type, message, code, id.
 - `--report-level <level>`: Minimum severity level to report (`critical`, `high`, `medium`, `low`). Overrides the config file setting.
 - `--benchmark`: Show detailed timing information for each analyzer and phase. Useful for performance profiling and identifying slow analyzers.
 
@@ -333,36 +334,22 @@ Example:
 
 The `cve` analyzer queries the [OSV.dev](https://osv.dev) database for known vulnerabilities affecting your dependencies. It maps CVE severity scores to Depspector's severity levels.
 
-**Default CVSS Score Thresholds:**
+**CVSS Score Thresholds:**
 
 - **Critical**: CVSS score ≥ 9.0
 - **High**: CVSS score ≥ 7.0
 - **Medium**: CVSS score ≥ 4.0
 - **Low**: CVSS score < 4.0
 
-You can customize these thresholds to match your organization's security policies:
-
 ```json
 {
   "analyzers": {
     "cve": {
-      "enabled": true,
-      "timeout": 5000,
-      "criticalThreshold": 8.0,
-      "highThreshold": 6.0,
-      "mediumThreshold": 4.0
+      "enabled": true
     }
   }
 }
 ```
-
-| Property            | Type    | Default | Description                                        |
-| ------------------- | ------- | ------- | -------------------------------------------------- |
-| `enabled`           | boolean | `true`  | Enable/disable CVE checking.                       |
-| `timeout`           | number  | `5000`  | Timeout in milliseconds for OSV.dev API requests.  |
-| `criticalThreshold` | number  | `9.0`   | Minimum CVSS score to classify as critical (0-10). |
-| `highThreshold`     | number  | `7.0`   | Minimum CVSS score to classify as high (0-10).     |
-| `mediumThreshold`   | number  | `4.0`   | Minimum CVSS score to classify as medium (0-10).   |
 
 **Note**: CVE scanning requires network access to `api.osv.dev`. Queries are made per package version and failures are silently ignored to avoid blocking analysis on network issues.
 
@@ -563,6 +550,10 @@ The `buffer` analyzer detects suspicious `Buffer.from()` usage that may indicate
 }
 ```
 
+| Property          | Type   | Default | Description                                                   |
+| ----------------- | ------ | ------- | ------------------------------------------------------------- |
+| `minBufferLength` | number | `100`   | Minimum length of buffer content to be flagged as suspicious. |
+
 ### Cooldown Analyzer Configuration
 
 The `cooldown` analyzer flags recently published packages. You can configure the time threshold:
@@ -619,24 +610,42 @@ This is useful for allowing packages published by bots like GitHub Actions, Reno
 
 The `scripts` analyzer flags suspicious lifecycle scripts (preinstall, install, postinstall). By default, common safe commands used by legitimate packages are whitelisted:
 
-**Default Allowed Commands:**
-`npm`, `npx`, `yarn`, `pnpm`, `node-gyp`, `node-gyp-build`, `prebuild-install`, `husky`, `lerna`, `tsc`, `rimraf`, `mkdirp`, `ncp`, `cpy-cli`, `shx`, `cross-env`, `patch-package`, `is-ci-cli`
+**Default Allowed Commands (partial list):**
 
-You can override the defaults with your own whitelist:
+- Package managers: `npm run`, `npm install`, `yarn run`, `pnpm run`, `lerna`, `nx`, `turbo`
+- Git hooks: `husky`, `lint-staged`, `simple-git-hooks`, `lefthook`
+- Build tools: `tsc`, `babel`, `webpack`, `rollup`, `esbuild`, `vite`, `parcel`, `swc`
+- Native builds: `node-gyp`, `prebuild`, `prebuild-install`, `cmake-js`, `node-pre-gyp`
+- Utilities: `patch-package`, `rimraf`, `shx`, `cross-env`, `copyfiles`, `ncp`, `cpy`
+
+You can add additional allowed commands with your own list:
 
 ```json
 {
   "analyzers": {
     "scripts": {
-      "allowedCommands": ["npm", "yarn", "node-gyp", "my-build-tool"]
+      "allowedCommands": ["my-build-tool", "custom-script"]
     }
   }
 }
 ```
 
-| Property          | Type     | Default                              | Description                              |
-| ----------------- | -------- | ------------------------------------ | ---------------------------------------- |
-| `allowedCommands` | string[] | (common safe build/install commands) | Commands to ignore in lifecycle scripts. |
+You can also whitelist specific script events entirely:
+
+```json
+{
+  "analyzers": {
+    "scripts": {
+      "allowedScripts": ["postinstall"]
+    }
+  }
+}
+```
+
+| Property          | Type     | Default                              | Description                                           |
+| ----------------- | -------- | ------------------------------------ | ----------------------------------------------------- |
+| `allowedCommands` | string[] | (common safe build/install commands) | Additional commands to ignore in lifecycle scripts.   |
+| `allowedScripts`  | string[] | `[]`                                 | Script events to ignore entirely (e.g., postinstall). |
 
 **Severity Classification:**
 The scripts analyzer assigns severity based on script content:

@@ -25,11 +25,12 @@ pub struct ReportContext<'a> {
   pub only_new: bool,
   pub json_output: Option<&'a Path>,
   pub yaml_output: Option<&'a Path>,
+  pub csv_output: Option<&'a Path>,
 }
 
 impl<'a> ReportContext<'a> {
   pub fn new(report_level: &'a str, only_new: bool) -> Self {
-    Self { report_level, only_new, json_output: None, yaml_output: None }
+    Self { report_level, only_new, json_output: None, yaml_output: None, csv_output: None }
   }
 
   pub fn with_json_output(mut self, path: Option<&'a Path>) -> Self {
@@ -39,6 +40,11 @@ impl<'a> ReportContext<'a> {
 
   pub fn with_yaml_output(mut self, path: Option<&'a Path>) -> Self {
     self.yaml_output = path;
+    self
+  }
+
+  pub fn with_csv_output(mut self, path: Option<&'a Path>) -> Self {
+    self.csv_output = path;
     self
   }
 }
@@ -68,6 +74,10 @@ impl Reporter {
       self.write_yaml(&filtered, yaml_path)?;
     }
 
+    if let Some(csv_path) = ctx.csv_output {
+      self.write_csv(&filtered, csv_path)?;
+    }
+
     self.print_console(&filtered, min_severity);
 
     Ok(())
@@ -87,6 +97,47 @@ impl Reporter {
     let mut file = File::create(path)?;
     file.write_all(yaml.as_bytes())?;
     println!("{} {}", "YAML report written to:".green(), path.display());
+    Ok(())
+  }
+
+  fn write_csv(&self, results: &[AnalysisResult], path: &Path) -> std::io::Result<()> {
+    let mut wtr = csv::Writer::from_path(path)?;
+
+    // Write header
+    wtr
+      .write_record(["package", "file", "line", "severity", "type", "message", "code", "id"])
+      .map_err(|e| std::io::Error::other(e.to_string()))?;
+
+    // Write each issue as a row
+    for result in results {
+      let package = result.package.as_deref().unwrap_or("unknown");
+
+      for issue in &result.issues {
+        let file_path = issue.file.as_ref().unwrap_or(&result.package_path);
+        let severity = match issue.severity {
+          Severity::Critical => "critical",
+          Severity::High => "high",
+          Severity::Medium => "medium",
+          Severity::Low => "low",
+        };
+
+        wtr
+          .write_record([
+            package,
+            file_path,
+            &issue.line.to_string(),
+            severity,
+            &issue.issue_type,
+            &issue.message,
+            issue.code.as_deref().unwrap_or(""),
+            issue.id.as_deref().unwrap_or(""),
+          ])
+          .map_err(|e| std::io::Error::other(e.to_string()))?;
+      }
+    }
+
+    wtr.flush()?;
+    println!("{} {}", "CSV report written to:".green(), path.display());
     Ok(())
   }
 

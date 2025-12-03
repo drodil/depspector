@@ -110,7 +110,8 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   let report_level = cli.report_level.as_deref().unwrap_or(config.report_level.as_str());
   let report_ctx = ReportContext::new(report_level, cli.only_new)
     .with_json_output(cli.json.as_deref())
-    .with_yaml_output(cli.yaml.as_deref());
+    .with_yaml_output(cli.yaml.as_deref())
+    .with_csv_output(cli.csv.as_deref());
 
   reporter.report(&results, &report_ctx).map_err(|e| NapiError::from_reason(e.to_string()))?;
 
@@ -166,6 +167,8 @@ struct Cli {
   json: Option<PathBuf>,
   #[clap(long, help = "Output report as YAML to file")]
   yaml: Option<PathBuf>,
+  #[clap(long, help = "Output report as CSV to file")]
+  csv: Option<PathBuf>,
   #[clap(long, help = "Minimum severity level to report (critical, high, medium, low, info)")]
   report_level: Option<String>,
   #[clap(long, help = "Show detailed benchmark/timing information for each analyzer")]
