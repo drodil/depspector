@@ -88,6 +88,8 @@ pub struct Config {
   #[serde(default)]
   pub fail_fast: bool,
   #[serde(default)]
+  pub include_tests: bool,
+  #[serde(default)]
   pub npm: NpmConfig,
   #[serde(default)]
   pub analyzers: HashMap<String, AnalyzerConfig>,
@@ -118,6 +120,7 @@ impl Default for Config {
       report_level: default_report_level(),
       exit_with_failure_on_level: None,
       fail_fast: false,
+      include_tests: false,
       npm: NpmConfig::default(),
       analyzers: HashMap::new(),
       max_file_size: default_max_file_size(),

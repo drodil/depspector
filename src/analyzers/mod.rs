@@ -681,14 +681,12 @@ impl Analyzer {
         if rel_segments.iter().any(|s| is_excluded_dir(s, config)) {
           return false;
         }
-        if rel_segments.iter().any(|s| s == "node_modules") {
-          return false;
-        }
         let fname = e.file_name().to_string_lossy();
-        if fname.ends_with(".d.ts") || fname.ends_with(".min.js") {
+        if fname.ends_with(".d.ts") {
           return false;
         }
-        if fname.ends_with(".test.js") || fname.ends_with(".test.ts") {
+        // Skip test files unless include_tests is enabled
+        if !config.include_tests && is_test_file(&fname) {
           return false;
         }
         fname.ends_with(".js")
@@ -766,6 +764,60 @@ fn is_excluded_dir(segment: &str, config: &Config) -> bool {
   ) || config.exclude.iter().any(|e| e == segment)
 }
 
+fn is_test_file(filename: &str) -> bool {
+  let lower = filename.to_lowercase();
+
+  if lower.ends_with(".test.js")
+    || lower.ends_with(".test.ts")
+    || lower.ends_with(".test.mjs")
+    || lower.ends_with(".test.cjs")
+    || lower.ends_with(".spec.js")
+    || lower.ends_with(".spec.ts")
+    || lower.ends_with(".spec.mjs")
+    || lower.ends_with(".spec.cjs")
+    || lower.ends_with(".tests.js")
+    || lower.ends_with(".tests.ts")
+    || lower.ends_with(".specs.js")
+    || lower.ends_with(".specs.ts")
+    || lower.ends_with("_test.js")
+    || lower.ends_with("_test.ts")
+    || lower.ends_with("_spec.js")
+    || lower.ends_with("_spec.ts")
+    || lower.ends_with("-test.js")
+    || lower.ends_with("-test.ts")
+    || lower.ends_with("-spec.js")
+    || lower.ends_with("-spec.ts")
+  {
+    return true;
+  }
+
+  let stem = lower
+    .strip_suffix(".js")
+    .or_else(|| lower.strip_suffix(".ts"))
+    .or_else(|| lower.strip_suffix(".mjs"))
+    .or_else(|| lower.strip_suffix(".cjs"))
+    .unwrap_or(&lower);
+
+  matches!(
+    stem,
+    "test"
+      | "tests"
+      | "spec"
+      | "specs"
+      | "test-helper"
+      | "test-helpers"
+      | "test-utils"
+      | "test-setup"
+      | "setup-tests"
+      | "jest.config"
+      | "jest.setup"
+      | "vitest.config"
+      | "vitest.setup"
+      | "mocha.opts"
+      | "karma.conf"
+  )
+}
+
 fn apply_severity_override(
   mut issues: Vec<Issue>,
   analyzer_name: &str,
@@ -832,5 +884,68 @@ mod analyzer_tests {
 
     assert_eq!(analyzer.file_analyzer_count(), 2);
     assert_eq!(analyzer.package_analyzer_count(), 0);
+  }
+
+  #[test]
+  fn test_is_test_file_dot_test() {
+    assert!(is_test_file("foo.test.js"));
+    assert!(is_test_file("foo.test.ts"));
+    assert!(is_test_file("foo.test.mjs"));
+    assert!(is_test_file("foo.test.cjs"));
+    assert!(is_test_file("Component.Test.JS")); 
+  }
+
+  #[test]
+  fn test_is_test_file_dot_spec() {
+    assert!(is_test_file("foo.spec.js"));
+    assert!(is_test_file("foo.spec.ts"));
+    assert!(is_test_file("foo.spec.mjs"));
+    assert!(is_test_file("foo.spec.cjs"));
+  }
+
+  #[test]
+  fn test_is_test_file_underscore_and_dash() {
+    assert!(is_test_file("foo_test.js"));
+    assert!(is_test_file("foo_spec.ts"));
+    assert!(is_test_file("foo-test.js"));
+    assert!(is_test_file("foo-spec.ts"));
+  }
+
+  #[test]
+  fn test_is_test_file_plural() {
+    assert!(is_test_file("foo.tests.js"));
+    assert!(is_test_file("foo.specs.ts"));
+  }
+
+  #[test]
+  fn test_is_test_file_config_files() {
+    assert!(is_test_file("jest.config.js"));
+    assert!(is_test_file("jest.setup.ts"));
+    assert!(is_test_file("vitest.config.js"));
+    assert!(is_test_file("vitest.setup.ts"));
+    assert!(is_test_file("karma.conf.js"));
+  }
+
+  #[test]
+  fn test_is_test_file_helper_files() {
+    assert!(is_test_file("test.js"));
+    assert!(is_test_file("tests.js"));
+    assert!(is_test_file("spec.js"));
+    assert!(is_test_file("test-helper.js"));
+    assert!(is_test_file("test-helpers.ts"));
+    assert!(is_test_file("test-utils.js"));
+    assert!(is_test_file("test-setup.js"));
+    assert!(is_test_file("setup-tests.js"));
+  }
+
+  #[test]
+  fn test_is_test_file_non_test() {
+    assert!(!is_test_file("index.js"));
+    assert!(!is_test_file("main.ts"));
+    assert!(!is_test_file("utils.mjs"));
+    assert!(!is_test_file("helper.cjs"));
+    assert!(!is_test_file("contest.js")); 
+    assert!(!is_test_file("fastest.js"));
+    assert!(!is_test_file("inspect.js")); 
   }
 }

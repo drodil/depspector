@@ -48,7 +48,12 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     .canonicalize()
     .map_err(|e| NapiError::from_reason(format!("Working directory not found: {}", e)))?;
 
-  let config = Config::load(cli.config.as_deref(), Some(&working_dir))?;
+  let mut config = Config::load(cli.config.as_deref(), Some(&working_dir))?;
+
+  // CLI flag overrides config setting
+  if cli.include_tests {
+    config.include_tests = true;
+  }
 
   let node_modules_path = working_dir.join(&cli.path);
   if !node_modules_path.exists() {
@@ -173,6 +178,8 @@ struct Cli {
   report_level: Option<String>,
   #[clap(long, help = "Show detailed benchmark/timing information for each analyzer")]
   benchmark: bool,
+  #[clap(long, help = "Include test files in analysis (skipped by default)")]
+  include_tests: bool,
 }
 
 #[cfg(test)]

@@ -132,6 +132,7 @@ node bin.js [options]
 - `--csv <path>`: Output the analysis report as CSV to the specified file. Each row contains: package, file, line, severity, type, message, code, id.
 - `--report-level <level>`: Minimum severity level to report (`critical`, `high`, `medium`, `low`). Overrides the config file setting.
 - `--benchmark`: Show detailed timing information for each analyzer and phase. Useful for performance profiling and identifying slow analyzers.
+- `--include-tests`: Include test files in analysis. By default, test files are skipped (e.g., `*.test.js`, `*.spec.ts`, `jest.config.js`).
 
 ## Performance
 
@@ -193,10 +194,19 @@ Create a `.depspectorrc` file in your project root:
 | `exitWithFailureOnLevel` | `"critical" \| "high" \| "medium" \| "low" \| "off"` | `"high"`        | Exit with code 1 if issues at this severity level or higher are found. Use `"off"` to disable.                               |
 | `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.                                    |
 | `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.                                    |
+| `includeTests`           | boolean                                              | `false`         | Include test files in analysis. By default, test files are skipped (see patterns below).                                     |
 | `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                                                          |
 | `maxFileSize`            | number                                               | `5242880`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 5MB.                                   |
 | `astTimeoutMs`           | number                                               | `0`             | Timeout in milliseconds for AST parsing per file. 0 means no timeout. Useful for skipping files that take too long to parse. |
 | `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                                                      |
+
+**Test File Patterns (skipped by default):**
+
+The following patterns are recognized as test files and excluded unless `includeTests` is enabled:
+
+- Suffixes: `*.test.js`, `*.spec.ts`, `*.tests.js`, `*.specs.ts`, `*_test.js`, `*-spec.ts` (and variants for `.mjs`, `.cjs`)
+- Config files: `jest.config.js`, `jest.setup.ts`, `vitest.config.js`, `karma.conf.js`, `mocha.opts`
+- Helper files: `test.js`, `spec.js`, `test-helper.js`, `test-utils.js`, `setup-tests.js`
 
 ### NPM Registry Configuration
 
