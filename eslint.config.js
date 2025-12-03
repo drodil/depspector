@@ -10,7 +10,7 @@ export default [
       "dist/**",
       "coverage/**",
       "node_modules/**",
-      "tests/fixtures/**",
+      "__tests__/__fixtures__/**",
       "*.config.js",
       ".cache/**",
       "index.js",

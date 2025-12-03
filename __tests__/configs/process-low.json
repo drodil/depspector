@@ -1,0 +1,9 @@
+{
+  "reportLevel": "low",
+  "exitWithFailureOnLevel": "high",
+  "analyzers": {
+    "process": {
+      "severity": "low"
+    }
+  }
+}
