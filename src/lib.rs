@@ -60,6 +60,10 @@ pub async fn run(args: Vec<String>) -> Result<()> {
 
   let mut config = Config::load(cli.config.as_deref(), Some(&working_dir))?;
 
+  if !cli.exclude_path.is_empty() {
+    config.exclude_paths.extend(cli.exclude_path);
+  }
+
   if cli.include_tests {
     config.include_tests = true;
   }
@@ -115,21 +119,11 @@ pub async fn run(args: Vec<String>) -> Result<()> {
 
   let benchmark_collector = if cli.benchmark { Some(BenchmarkCollector::new()) } else { None };
 
-  // Build dependency graph to determine package types for reporting
   let dependency_graph = DependencyGraph::build(&working_dir, &node_modules_path);
   if dependency_graph.total_count() > 0 {
     debug!("Built dependency graph with {} packages", dependency_graph.total_count());
   } else {
     debug!("No packages found in dependency graph");
-  }
-  if !config.include_dev_deps {
-    info!("Found {} dev packages that will be skipped", dependency_graph.dev_count());
-  }
-  if !config.include_optional_deps {
-    info!("Found {} optional packages that will be skipped", dependency_graph.optional_count());
-  }
-  if !config.include_peer_deps {
-    info!("Found {} peer packages that will be skipped", dependency_graph.peer_count());
   }
 
   let start_time = std::time::Instant::now();
@@ -159,7 +153,6 @@ pub async fn run(args: Vec<String>) -> Result<()> {
 
   reporter.report(&results, &report_ctx).map_err(|e| NapiError::from_reason(e.to_string()))?;
 
-  // After reporting, print information about ignored issue IDs that had no matches
   if !ignore_issues.is_empty() {
     if let Ok(used_ignored) = analyze_ctx.ignored_ids.lock() {
       let used: std::collections::HashSet<_> = used_ignored.iter().cloned().collect();
@@ -201,6 +194,8 @@ struct Cli {
   path: PathBuf,
   #[clap(short, long, help = "Path to configuration file")]
   config: Option<PathBuf>,
+  #[clap(long, help = "Exclude specific file paths from analysis")]
+  exclude_path: Vec<String>,
   #[clap(long, default_value = ".", help = "Working directory for analysis")]
   cwd: PathBuf,
   #[clap(long, default_value_t = true, action = clap::ArgAction::Set, help = "Enable package result caching")]

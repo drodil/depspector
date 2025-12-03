@@ -10,11 +10,13 @@ use crate::config::Config;
 use crate::prefetch::PrefetchedData;
 use crate::util::normalize_path;
 
+pub mod base64;
 pub mod buffer;
 pub mod dynamic;
 pub mod env;
 pub mod eval;
 pub mod fs;
+pub mod ip;
 pub mod metadata;
 pub mod minified;
 pub mod network;
@@ -32,6 +34,7 @@ pub mod reputation;
 pub mod scripts;
 pub mod typosquat;
 
+pub use base64::Base64Analyzer;
 pub use buffer::BufferAnalyzer;
 pub use cooldown::CooldownAnalyzer;
 pub use cve::CVEAnalyzer;
@@ -41,6 +44,7 @@ pub use dynamic::DynamicAnalyzer;
 pub use env::EnvAnalyzer;
 pub use eval::EvalAnalyzer;
 pub use fs::FsAnalyzer;
+pub use ip::IpAnalyzer;
 pub use metadata::MetadataAnalyzer;
 pub use minified::MinifiedAnalyzer;
 pub use native::NativeAnalyzer;
@@ -336,6 +340,10 @@ impl Analyzer {
       }
     };
 
+    if should_include("base64") {
+      file_analyzers.push(Box::new(Base64Analyzer));
+      active_analyzers.push("base64".to_string());
+    }
     if should_include("buffer") {
       file_analyzers.push(Box::new(BufferAnalyzer));
       active_analyzers.push("buffer".to_string());
@@ -355,6 +363,10 @@ impl Analyzer {
     if should_include("fs") {
       file_analyzers.push(Box::new(FsAnalyzer));
       active_analyzers.push("fs".to_string());
+    }
+    if should_include("ip") {
+      file_analyzers.push(Box::new(IpAnalyzer));
+      active_analyzers.push("ip".to_string());
     }
     if should_include("metadata") {
       file_analyzers.push(Box::new(MetadataAnalyzer));
@@ -659,7 +671,6 @@ impl Analyzer {
               if let Some(last) = segments.last() {
                 if last.starts_with('@') {
                   if segments.len() >= 2 {
-                    // Keep scope with '@' and join using '/': @scope/name
                     let scope = &segments[segments.len() - 2];
                     let name = &segments[segments.len() - 1];
                     format!("{}/{}", scope, name)
@@ -667,12 +678,10 @@ impl Analyzer {
                     last.to_string()
                   }
                 } else if segments.len() >= 2 && segments[segments.len() - 2].starts_with('@') {
-                  // Already scoped: keep the '@' and join with '/'
                   let scope = &segments[segments.len() - 2];
                   let name = &segments[segments.len() - 1];
                   format!("{}/{}", scope, name)
                 } else if segments.len() >= 2 {
-                  // For non-scoped packages, use full path style with artificial scope: @parent/name
                   let parent = &segments[segments.len() - 2];
                   let name = &segments[segments.len() - 1];
                   format!("@{}/{}", parent, name)
@@ -718,14 +727,12 @@ impl Analyzer {
           }
         }
 
-        // Determine dependency type from graph (if available)
         let dependency_type = ctx
           .dependency_graph
           .as_ref()
           .map(|g| g.get_type(&name))
           .unwrap_or(DependencyType::Unknown);
 
-        // A package is transient if it's not directly in the root package.json
         let is_transient =
           ctx.dependency_graph.as_ref().map(|g| !g.is_direct(&name)).unwrap_or(false);
 
@@ -887,6 +894,13 @@ impl Analyzer {
         if rel_segments.iter().any(|s| is_excluded_dir(s, config)) {
           return false;
         }
+
+        let rel_path = e.path().strip_prefix(pkg_path).unwrap_or(e.path());
+        let rel_path_str = normalize_path(&rel_path.to_string_lossy());
+        if config.exclude_paths.iter().any(|p| rel_path_str.contains(p)) {
+          return false;
+        }
+
         let fname = e.file_name().to_string_lossy();
         if fname.ends_with(".d.ts") {
           return false;
@@ -1065,7 +1079,7 @@ mod analyzer_tests {
     let config = Config::default();
     let analyzer = Analyzer::new(&config, false, None);
 
-    assert_eq!(analyzer.file_analyzer_count(), 12);
+    assert_eq!(analyzer.file_analyzer_count(), 14);
     assert_eq!(analyzer.package_analyzer_count(), 8);
   }
 
@@ -1086,7 +1100,7 @@ mod analyzer_tests {
     config.analyzers.insert("buffer".to_string(), analyzer_config);
 
     let analyzer = Analyzer::new(&config, false, None);
-    assert_eq!(analyzer.file_analyzer_count(), 11);
+    assert_eq!(analyzer.file_analyzer_count(), 13);
   }
 
   #[test]

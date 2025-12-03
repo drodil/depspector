@@ -22,6 +22,8 @@ Built with **Rust** for maximum performance and compiled to native Node.js bindi
   - **System Metadata**: Flags collection of system information (`os.userInfo()`, network interfaces)
   - **Prototype Pollution**: Detects attempts to pollute object prototypes
   - **Minified Code**: Identifies minified or obfuscated code patterns
+  - **IP Addresses**: Detects hardcoded public IP addresses
+  - **Base64 Blobs**: Flags large Base64 strings that may contain hidden payloads
 - **🛡️ Supply Chain Security**:
   - **CVE Detection**: Checks packages against OSV (Open Source Vulnerabilities) database for known CVEs
   - **Typosquatting Detection**: Identifies packages with names similar to popular libraries
@@ -116,6 +118,7 @@ node bin.js [options]
 ### Options
 
 - `-p, --path <path>`: Path to `node_modules` (default: `./node_modules`).
+- `--exclude-path <path...>`: Exclude specific file paths from analysis (can be specified multiple times).
 - `-c, --config <path>`: Path to configuration file (default: `.depspectorrc`).
 - `--cwd <path>`: Working directory where to run the analysis (default: `.`).
 - `--verbose`: Show detailed progress.
@@ -194,9 +197,10 @@ Create a `.depspectorrc` file in your project root:
 | ------------------------ | ---------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `analyzers`              | Object                                               | All enabled     | Configure individual analyzers (see [Analyzers](#analyzers) table).                                                          |
 | `exclude`                | Array\<string\>                                      | `[]`            | Package names to exclude from scanning.                                                                                      |
+| `excludePaths`           | Array\<string\>                                      | `[]`            | File paths (relative to package root) to exclude from analysis.                                                              |
 | `ignoreIssues`           | Array\<string\>                                      | `[]`            | Issue IDs to ignore. Issue IDs are displayed in brackets after each finding in the report.                                   |
 | `exitWithFailureOnLevel` | `"critical" \| "high" \| "medium" \| "low" \| "off"` | `"high"`        | Exit with code 1 if issues at this severity level or higher are found. Use `"off"` to disable.                               |
-| `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.                                    |
+| `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"medium"`      | Only report issues at this severity level or higher. If not set, all issues are reported.                                    |
 | `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.                                    |
 | `includeTests`           | boolean                                              | `false`         | Include test files in analysis. By default, test files are skipped (see patterns below).                                     |
 | `includeDevDeps`         | boolean                                              | `false`         | Include dev dependencies in analysis. By default, dev-only packages are excluded to focus on production security.            |
@@ -376,6 +380,8 @@ Example:
 | `metadata`    | Flags collection of system information (`os.userInfo()`, network interfaces).                                             |
 | `pollution`   | Detects prototype pollution attempts.                                                                                     |
 | `minified`    | Identifies minified or obfuscated code.                                                                                   |
+| `ip`          | Detects hardcoded public IP addresses. Ignores private ranges.                                                            |
+| `base64`      | Flags large Base64 blobs. Configurable `minBufferLength`.                                                                 |
 
 ### CVE Analyzer Configuration
 
@@ -600,6 +606,45 @@ The `buffer` analyzer detects suspicious `Buffer.from()` usage that may indicate
 | Property          | Type   | Default | Description                                                   |
 | ----------------- | ------ | ------- | ------------------------------------------------------------- |
 | `minBufferLength` | number | `100`   | Minimum length of buffer content to be flagged as suspicious. |
+
+### Ip Analyzer Configuration
+
+The `ip` analyzer detects hardcoded public IP addresses. It automatically ignores private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8) and other non-routable addresses.
+
+You can also whitelist specific IP addresses:
+
+```json
+{
+  "analyzers": {
+    "ip": {
+      "enabled": true,
+      "allowedIps": ["8.8.8.8", "1.1.1.1"]
+    }
+  }
+}
+```
+
+| Property     | Type     | Default | Description                     |
+| ------------ | -------- | ------- | ------------------------------- |
+| `allowedIps` | string[] | `[]`    | List of IP addresses to ignore. |
+
+### Base64 Analyzer Configuration
+
+The `base64` analyzer flags large Base64 strings that might conceal payloads. You can configure the minimum length:
+
+```json
+{
+  "analyzers": {
+    "base64": {
+      "minBufferLength": 1000
+    }
+  }
+}
+```
+
+| Property          | Type   | Default | Description                                    |
+| ----------------- | ------ | ------- | ---------------------------------------------- |
+| `minBufferLength` | number | `1000`  | Minimum length of Base64 string to be flagged. |
 
 ### Cooldown Analyzer Configuration
 

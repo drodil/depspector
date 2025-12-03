@@ -66,17 +66,35 @@ impl EnvVisitor<'_> {
     let id =
       generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
 
+    let severity = if is_sensitive_env_var(var_name) { Severity::Medium } else { Severity::Low };
+
     self.issues.push(Issue {
       issue_type: self.analyzer_name.to_string(),
       line,
       message,
-      severity: Severity::Medium,
+      severity,
       code: Some(self.line_index.get_line(line)),
       analyzer: Some(self.analyzer_name.to_string()),
       id: Some(id),
       file: None,
     });
   }
+}
+
+fn is_sensitive_env_var(var_name: &str) -> bool {
+  let upper = var_name.to_uppercase();
+
+  upper.contains("KEY")
+    || upper.contains("TOKEN")
+    || upper.contains("SECRET")
+    || upper.contains("PASSWORD")
+    || upper.contains("PASSWD")
+    || upper.contains("CREDENTIALS")
+    || upper.contains("AUTH")
+    || upper.contains("API")
+    || upper.contains("PRIVATE")
+    || upper.contains("CERT")
+    || upper.contains("SIGNATURE")
 }
 
 impl AstVisitor for EnvVisitor<'_> {
@@ -165,6 +183,7 @@ mod tests {
 
     assert_eq!(issues.len(), 1);
     assert!(issues[0].message.contains("API_KEY"));
+    assert_eq!(issues[0].severity, Severity::Medium); // API_KEY should be medium
   }
 
   #[test]
@@ -187,6 +206,7 @@ mod tests {
 
     assert_eq!(issues.len(), 1);
     assert!(issues[0].message.contains("SECRET_TOKEN"));
+    assert_eq!(issues[0].severity, Severity::Medium); // SECRET and TOKEN should be medium
   }
 
   #[test]
@@ -209,6 +229,30 @@ mod tests {
     let issues = analyzer.analyze(&context);
 
     assert_eq!(issues.len(), 2);
+    // Both should be medium severity due to SECRET/KEY and API/TOKEN patterns
+    assert!(issues.iter().all(|i| i.severity == Severity::Medium));
+  }
+
+  #[test]
+  fn test_low_severity_for_non_sensitive_vars() {
+    let analyzer = EnvAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"const env = process.env.MY_CUSTOM_VAR;"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].severity, Severity::Low); // Non-sensitive var should be low
   }
 
   #[test]

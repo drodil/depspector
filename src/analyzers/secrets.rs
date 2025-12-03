@@ -28,7 +28,7 @@ lazy_static! {
     ).unwrap();
 
     static ref GENERIC_API_KEY: Regex = Regex::new(
-        r#"(?i)(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)['":\s]*[=:]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?"#
+        r#"(?i)(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)['":\s]*[=:]\s*['"]?([a-zA-Z0-9_\-]{32,})['"]?"#
     ).unwrap();
 
     static ref NPM_TOKEN: Regex = Regex::new(
@@ -392,7 +392,7 @@ mod tests {
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let source = r#"const apiKey = "abc123def456ghi789jkl012";"#;
+    let source = r#"const apiKey = "abc123def456ghi789jkl012mno345pqr678";"#;
 
     let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {

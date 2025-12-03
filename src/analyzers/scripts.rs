@@ -40,6 +40,7 @@ const DEFAULT_ALLOWED_COMMANDS: &[&str] = &[
   "swc ",
   // Native module building
   "node-gyp",
+  "node-gyp-build",
   "prebuild",
   "prebuild-install",
   "cmake-js",

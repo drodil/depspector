@@ -70,6 +70,8 @@ pub struct AnalyzerConfig {
   pub allowed_commands: Option<Vec<String>>,
   #[serde(default)]
   pub popular_packages: Option<Vec<String>>,
+  #[serde(default)]
+  pub allowed_ips: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +79,8 @@ pub struct AnalyzerConfig {
 pub struct Config {
   #[serde(default)]
   pub exclude: Vec<String>,
+  #[serde(default)]
+  pub exclude_paths: Vec<String>,
   #[serde(default)]
   pub ignore_issues: Vec<String>,
   #[serde(default = "default_cache_dir")]
@@ -114,7 +118,7 @@ fn default_cache_dir() -> String {
 }
 
 fn default_report_level() -> String {
-  "low".to_string()
+  "medium".to_string()
 }
 
 fn default_true() -> bool {
@@ -129,6 +133,7 @@ impl Default for Config {
   fn default() -> Self {
     Self {
       exclude: Vec::new(),
+      exclude_paths: Vec::new(),
       ignore_issues: Vec::new(),
       cache_dir: default_cache_dir(),
       report_level: default_report_level(),
@@ -197,7 +202,7 @@ mod tests {
     let config = Config::default();
     assert!(config.exclude.is_empty());
     assert!(config.ignore_issues.is_empty());
-    assert_eq!(config.report_level, "low");
+    assert_eq!(config.report_level, "medium");
     assert!(!config.include_tests);
     assert!(!config.include_dev_deps);
     assert!(!config.skip_transient);
