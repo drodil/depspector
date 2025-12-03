@@ -120,6 +120,29 @@ impl PackageCache {
     entries.get(&key).and_then(|e| e.results.first().cloned())
   }
 
+  pub fn get_if_fresh(
+    &self,
+    name: &str,
+    version: &str,
+    max_age_seconds: Option<u64>,
+  ) -> Option<AnalysisResult> {
+    let key = format!("{}@{}", name, version);
+    let entries = self.entries.read().unwrap();
+    if let Some(entry) = entries.get(&key) {
+      if let Some(max_age) = max_age_seconds {
+        let now = std::time::SystemTime::now()
+          .duration_since(std::time::UNIX_EPOCH)
+          .map(|d| d.as_secs())
+          .unwrap_or(0);
+        if now.saturating_sub(entry.timestamp) > max_age {
+          return None;
+        }
+      }
+      return entry.results.first().cloned();
+    }
+    None
+  }
+
   pub fn set(&self, name: &str, version: &str, result: &AnalysisResult) -> Result<()> {
     let key = format!("{}@{}", name, version);
 
@@ -169,9 +192,18 @@ impl PackageCache {
   }
 
   pub fn clear_all(&self) -> Result<()> {
-    let cache_file = self.cache_file();
-    if cache_file.exists() {
-      fs::remove_file(cache_file)?;
+    // Remove all cache files for any keys in the cache directory
+    if let Ok(dir_entries) = fs::read_dir(&self.cache_dir) {
+      for entry in dir_entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+          if let Some(fname) = path.file_name().and_then(|s| s.to_str()) {
+            if fname.starts_with("cache-") && fname.ends_with(".json") {
+              let _ = fs::remove_file(&path);
+            }
+          }
+        }
+      }
     }
     // Also clear in-memory entries
     self.entries.write().unwrap().clear();

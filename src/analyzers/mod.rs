@@ -630,6 +630,17 @@ impl Analyzer {
           return;
         }
 
+        {
+          let rel_segments: Vec<String> = pkg_path
+            .strip_prefix(ctx.node_modules_path)
+            .unwrap_or(&pkg_path)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .collect();
+          if rel_segments.iter().any(|s| is_excluded_dir(s, ctx.config)) {
+            return;
+          }
+        }
         let package_json_content = match fs::read_to_string(entry.path()) {
           Ok(c) => c,
           Err(_) => return,
@@ -638,14 +649,61 @@ impl Analyzer {
           Ok(v) => v,
           Err(_) => return,
         };
-        let name = package_json.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-        let version = package_json.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0");
+
+        let name =
+          package_json.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(
+            || {
+              let rel = pkg_path.strip_prefix(ctx.node_modules_path).unwrap_or(&pkg_path);
+              let segments: Vec<_> =
+                rel.components().map(|c| c.as_os_str().to_string_lossy()).collect();
+              if let Some(last) = segments.last() {
+                if last.starts_with('@') {
+                  if segments.len() >= 2 {
+                    // Keep scope with '@' and join using '/': @scope/name
+                    let scope = &segments[segments.len() - 2];
+                    let name = &segments[segments.len() - 1];
+                    format!("{}/{}", scope, name)
+                  } else {
+                    last.to_string()
+                  }
+                } else if segments.len() >= 2 && segments[segments.len() - 2].starts_with('@') {
+                  // Already scoped: keep the '@' and join with '/'
+                  let scope = &segments[segments.len() - 2];
+                  let name = &segments[segments.len() - 1];
+                  format!("{}/{}", scope, name)
+                } else if segments.len() >= 2 {
+                  // For non-scoped packages, use full path style with artificial scope: @parent/name
+                  let parent = &segments[segments.len() - 2];
+                  let name = &segments[segments.len() - 1];
+                  format!("@{}/{}", parent, name)
+                } else {
+                  last.to_string()
+                }
+              } else {
+                "unknown".to_string()
+              }
+            },
+          );
+        let version = package_json
+          .get("version")
+          .and_then(|v| v.as_str())
+          .or_else(|| {
+            package_json.get("_id").and_then(|v| v.as_str()).and_then(|id| {
+              let parts: Vec<&str> = id.rsplit('@').collect();
+              if parts.len() >= 2 {
+                Some(parts[0])
+              } else {
+                None
+              }
+            })
+          })
+          .unwrap_or("0.0.0");
         if ctx.config.exclude.iter().any(|e| name.contains(e)) {
           return;
         }
 
         if let Some(ref graph) = ctx.dependency_graph {
-          let dep_type = graph.get_type(name);
+          let dep_type = graph.get_type(&name);
           if !ctx.config.include_dev_deps && dep_type == DependencyType::Dev {
             log::debug!("Skipping dev dependency: {}", name);
             return;
@@ -664,12 +722,12 @@ impl Analyzer {
         let dependency_type = ctx
           .dependency_graph
           .as_ref()
-          .map(|g| g.get_type(name))
+          .map(|g| g.get_type(&name))
           .unwrap_or(DependencyType::Unknown);
 
         // A package is transient if it's not directly in the root package.json
         let is_transient =
-          ctx.dependency_graph.as_ref().map(|g| !g.is_direct(name)).unwrap_or(false);
+          ctx.dependency_graph.as_ref().map(|g| !g.is_direct(&name)).unwrap_or(false);
 
         if ctx.config.skip_transient && is_transient {
           log::debug!("Skipping transient dependency: {}", name);
@@ -677,7 +735,8 @@ impl Analyzer {
         }
 
         if let Some(cache) = ctx.cache {
-          if let Some(cached) = cache.get(name, version) {
+          let max_age = ctx.config.cache_max_age_seconds;
+          if let Some(cached) = cache.get_if_fresh(&name, version, max_age) {
             let filtered_issues: Vec<_> = cached
               .issues
               .iter()
@@ -801,7 +860,7 @@ impl Analyzer {
     };
 
     if let Some(cache) = ctx.cache {
-      let _ = cache.set(&wi.name, &wi.version, &result);
+      let _ = cache.update_entry(&wi.name, &wi.version, &wi.pkg_path, vec![result.clone()]);
     }
 
     result

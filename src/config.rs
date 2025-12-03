@@ -105,6 +105,8 @@ pub struct Config {
   pub max_file_size: usize,
   #[serde(default)]
   pub ast_timeout_ms: u64,
+  #[serde(default)]
+  pub cache_max_age_seconds: Option<u64>,
 }
 
 fn default_cache_dir() -> String {
@@ -141,6 +143,7 @@ impl Default for Config {
       analyzers: HashMap::new(),
       max_file_size: default_max_file_size(),
       ast_timeout_ms: 0,
+      cache_max_age_seconds: None,
     }
   }
 }

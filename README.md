@@ -144,6 +144,7 @@ Depspector includes several optimizations for faster scanning:
 - **Package Caching**: Caches both the fact a package was scanned and its findings. If a package's `package.json` is unchanged, its previous results are reused in the report (not silently dropped) and the code is not re-parsed.
 - **Parallel Analysis**: Package-level analyzers and file-level analyzers run in parallel to maximize performance.
 - **Configurable Cache Directory**: Use `cacheDir` in configuration to control where cache files are stored (useful for CI environments).
+- **Cache Freshness Control**: Configure maximum cache lifetime with `cacheMaxAgeSeconds` to automatically skip stale entries.
 
 The first scan may be slow as it goes through all package dependencies.
 
@@ -153,6 +154,7 @@ You can also use the CLI flags:
 
 - `--clear-cache` to wipe existing cached entries before the scan starts.
 - `--no-cache` to skip both reading and writing cache data for that run.
+- `--only-new` to show only issues from packages analyzed fresh in this run (cached packages are still listed but their issues are marked as cached).
 
 ## Configuration
 
@@ -201,6 +203,7 @@ Create a `.depspectorrc` file in your project root:
 | `includeOptionalDeps`    | boolean                                              | `false`         | Include optional dependencies in analysis. By default, optional packages are excluded.                                       |
 | `skipTransient`          | boolean                                              | `false`         | Skip transient dependencies and only scan packages listed in root `package.json`.                                            |
 | `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                                                          |
+| `cacheMaxAgeSeconds`     | number                                               | `null`          | Max age for a cache entry in seconds. If set, entries older than this are ignored and re-analyzed.                           |
 | `maxFileSize`            | number                                               | `5242880`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 5MB.                                   |
 | `astTimeoutMs`           | number                                               | `0`             | Timeout in milliseconds for AST parsing per file. 0 means no timeout. Useful for skipping files that take too long to parse. |
 | `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                                                      |
@@ -319,6 +322,8 @@ npx depspector --ignore-issue MYPACKAG-NETWORK-A1B2C3 --ignore-issue OTHERPACK-S
 ```
 
 The CLI flag can be combined with configuration file settings. Both will be merged together.
+
+If you pass ignored issue IDs that do not match any findings, Depspector will print a note listing those IDs so you can clean up stale ignores.
 
 ## Analyzers
 
