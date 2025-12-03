@@ -36,7 +36,9 @@ impl PackageCache {
   }
 
   fn generate_cache_key(cwd: &Path, node_modules: &Path) -> String {
-    let key_input = format!("{}:{}", cwd.to_string_lossy(), node_modules.to_string_lossy());
+    let version = env!("CARGO_PKG_VERSION");
+    let key_input =
+      format!("v{}:{}:{}", version, cwd.to_string_lossy(), node_modules.to_string_lossy());
     sha256_hash(&key_input)[..16].to_string()
   }
 
