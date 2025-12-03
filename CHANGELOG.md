@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.9](https://github.com/drodil/depspector/compare/v0.0.8...v0.0.9) (2025-12-03)
+
+
+### Features
+
+* **analyzer:** add dependency type check ([7705ddf](https://github.com/drodil/depspector/commit/7705ddf282f1bedbc950b5561e1a010bd4557a64))
+* **analyzer:** report missing ignored issues ([8ae2435](https://github.com/drodil/depspector/commit/8ae243514597f0ff7ae4c4367766b76be7cd8a77))
+* **cli:** support including test files to analysis ([042fc27](https://github.com/drodil/depspector/commit/042fc270c34d63750a5040c866caa9da9b16fc81))
+* **report:** add csv output ([4f0b9a2](https://github.com/drodil/depspector/commit/4f0b9a26e5175e5b99e316a582eb54f79f5cb7a1))
+* **report:** calculate trust score for packages ([6d3412a](https://github.com/drodil/depspector/commit/6d3412a08bfc397ac6151aa6472d5aaf82010fc6))
+
 ### [0.0.8](https://github.com/drodil/depspector/compare/v0.0.7...v0.0.8) (2025-12-02)
 
 
