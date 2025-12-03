@@ -29,6 +29,7 @@ impl FileAnalyzer for ObfuscationAnalyzer {
           context.file_path.to_str().unwrap_or(""),
           line_num + 1,
           &message,
+          context.package_name,
         );
 
         let preview = if long_string.chars().count() > 50 {
@@ -58,6 +59,7 @@ impl FileAnalyzer for ObfuscationAnalyzer {
           context.file_path.to_str().unwrap_or(""),
           line_num + 1,
           &message,
+          context.package_name,
         );
 
         issues.push(Issue {

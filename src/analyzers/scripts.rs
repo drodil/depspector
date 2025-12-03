@@ -121,7 +121,7 @@ impl PackageAnalyzer for ScriptsAnalyzer {
           let message =
             format!("Package uses lifecycle script: \"{}\". Review for security.", event);
 
-          let id = generate_issue_id(self.name(), context.name, 0, &message);
+          let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
 
           issues.push(Issue {
             issue_type: self.name().to_string(),

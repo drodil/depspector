@@ -56,7 +56,7 @@ impl PackageAnalyzer for CooldownAnalyzer {
         context.version, hours_threshold, hours_since_publish as f64
       );
 
-      let id = generate_issue_id(self.name(), context.name, 0, &message);
+      let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
 
       issues.push(Issue {
         issue_type: self.name().to_string(),

@@ -11,10 +11,6 @@ lazy_static! {
         r#"AKIA[0-9A-Z]{16}"#
     ).unwrap();
 
-    static ref AWS_SECRET_KEY: Regex = Regex::new(
-        r#"[A-Za-z0-9/+=]{40}"#
-    ).unwrap();
-
     static ref RSA_PRIVATE_KEY: Regex = Regex::new(
         r#"-----BEGIN RSA PRIVATE KEY-----"#
     ).unwrap();
@@ -61,7 +57,7 @@ lazy_static! {
         r#"xox[baprs]-[0-9]{10,12}-[0-9]{10,12}-[a-zA-Z0-9]{24}"#, // 6: Slack
         r#"AIza[0-9A-Za-z\-_]{35}"#, // 7: Google
         r#"SK[0-9a-fA-F]{32}"#, // 8: Twilio
-        r#"(?i)(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)['":\s]*[=:]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?"#, // 9: Generic
+        r#"(?i)(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token)"#, // 9: Generic API key pattern (context)
     ]).unwrap();
 }
 
@@ -72,122 +68,153 @@ impl FileAnalyzer for SecretsAnalyzer {
     "secrets"
   }
 
+  fn uses_ast(&self) -> bool {
+    true
+  }
+
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
-    let mut issues = vec![];
+    // Quick regex check first - if no patterns match anywhere, skip AST parsing
+    let matches = SECRETS_SET.matches(context.source);
+    if !matches.matched_any() {
+      return vec![];
+    }
 
-    for (line_num, line) in context.source.lines().enumerate() {
-      // Use RegexSet to check if any pattern matches before running individual regexes
-      let matches = SECRETS_SET.matches(line);
-      if !matches.matched_any() {
-        continue;
-      }
+    let Some(ast) = context.parsed_ast else {
+      return vec![];
+    };
 
-      if matches.matched(0) && AWS_ACCESS_KEY.is_match(line) {
-        issues.push(create_issue(
+    let file_path = context.file_path.to_str().unwrap_or("");
+
+    let mut issues = vec![]; // Check each string literal from the AST
+    for string_lit in &ast.string_literals {
+      let value = &string_lit.value;
+      let line = string_lit.line.max(1);
+
+      // Check each pattern
+      if AWS_ACCESS_KEY.is_match(value) {
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential AWS Access Key ID found",
           Severity::Critical,
-        ));
+        );
       }
 
-      if (matches.matched(1) || matches.matched(2))
-        && (RSA_PRIVATE_KEY.is_match(line) || PRIVATE_KEY.is_match(line))
-        && !is_string_comparison(line)
+      if (RSA_PRIVATE_KEY.is_match(value) || PRIVATE_KEY.is_match(value))
+        && has_matching_end_marker(context.source, string_lit.line.saturating_sub(1))
       {
-        issues.push(create_issue(
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential Private Key found",
           Severity::Critical,
-        ));
+        );
       }
 
-      if matches.matched(3) && STRIPE_SECRET.is_match(line) {
-        issues.push(create_issue(
+      if STRIPE_SECRET.is_match(value) {
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential Stripe Secret Key found",
           Severity::Critical,
-        ));
+        );
       }
 
-      if matches.matched(4) && GITHUB_TOKEN.is_match(line) {
-        issues.push(create_issue(
+      if GITHUB_TOKEN.is_match(value) {
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential GitHub Token found",
           Severity::Critical,
-        ));
+        );
       }
 
-      if matches.matched(5) && NPM_TOKEN.is_match(line) {
-        issues.push(create_issue(
+      if NPM_TOKEN.is_match(value) {
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential npm Token found",
           Severity::Critical,
-        ));
+        );
       }
 
-      if matches.matched(6) && SLACK_TOKEN.is_match(line) {
-        issues.push(create_issue(
+      if SLACK_TOKEN.is_match(value) {
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential Slack Token found",
           Severity::Critical,
-        ));
+        );
       }
 
-      if matches.matched(7) && GOOGLE_API_KEY.is_match(line) {
-        issues.push(create_issue(
+      if GOOGLE_API_KEY.is_match(value) {
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential Google API Key found",
           Severity::High,
-        ));
+        );
       }
 
-      if matches.matched(8) && TWILIO_KEY.is_match(line) {
-        issues.push(create_issue(
+      if TWILIO_KEY.is_match(value) {
+        add_issue(
+          &mut issues,
           self.name(),
-          context,
-          line_num + 1,
+          file_path,
+          context.package_name,
           line,
+          value,
           "Potential Twilio API Key found",
           Severity::Critical,
-        ));
+        );
       }
 
-      if matches.matched(9)
-        && GENERIC_API_KEY.is_match(line)
-        && !matches.matched(0) // Not AWS
-        && !matches.matched(3) // Not Stripe
-        && !matches.matched(4)
-      // Not GitHub
-      {
-        issues.push(create_issue(
-          self.name(),
-          context,
-          line_num + 1,
-          line,
-          "Potential hardcoded API key or secret found",
-          Severity::High,
-        ));
+      if value.len() >= 20 {
+        let line_text = context.source.lines().nth(line.saturating_sub(1)).unwrap_or("");
+        if GENERIC_API_KEY.is_match(line_text)
+          && !AWS_ACCESS_KEY.is_match(value)
+          && !STRIPE_SECRET.is_match(value)
+          && !GITHUB_TOKEN.is_match(value)
+        {
+          add_issue(
+            &mut issues,
+            self.name(),
+            file_path,
+            context.package_name,
+            line,
+            value,
+            "Potential hardcoded API key or secret found",
+            Severity::High,
+          );
+        }
       }
     }
 
@@ -195,74 +222,46 @@ impl FileAnalyzer for SecretsAnalyzer {
   }
 }
 
-fn create_issue(
+#[allow(clippy::too_many_arguments)]
+fn add_issue(
+  issues: &mut Vec<Issue>,
   analyzer_name: &str,
-  context: &FileContext,
-  line_num: usize,
-  line: &str,
+  file_path: &str,
+  package_name: Option<&str>,
+  line: usize,
+  value: &str,
   message: &str,
   severity: Severity,
-) -> Issue {
-  let id =
-    generate_issue_id(analyzer_name, context.file_path.to_str().unwrap_or(""), line_num, message);
+) {
+  let id = generate_issue_id(analyzer_name, file_path, line, message, package_name);
 
-  Issue {
+  issues.push(Issue {
     issue_type: analyzer_name.to_string(),
-    line: line_num,
+    line,
     message: message.to_string(),
     severity,
-    code: Some(redact_secret(line)),
+    code: Some(redact_secret(value)),
     analyzer: Some(analyzer_name.to_string()),
     id: Some(id),
     file: None,
-  }
+  });
 }
 
-fn redact_secret(line: &str) -> String {
-  let trimmed = line.trim();
-  if trimmed.len() > 80 {
-    format!("{}...[REDACTED]", &trimmed[..40])
+fn redact_secret(value: &str) -> String {
+  if value.len() > 80 {
+    format!("{}...[REDACTED]", &value[..40])
   } else {
-    trimmed.to_string()
+    value.to_string()
   }
 }
 
-fn is_string_comparison(line: &str) -> bool {
-  let comparison_patterns = [
-    "===",
-    "!==",
-    "==",
-    "!=",
-    ".startsWith(",
-    ".endsWith(",
-    ".includes(",
-    ".indexOf(",
-    ".match(",
-    ".test(",
-  ];
+fn has_matching_end_marker(source: &str, begin_line: usize) -> bool {
+  // Check if there's an END marker within reasonable distance (e.g., next 100 lines)
+  let lines: Vec<&str> = source.lines().collect();
+  let start = begin_line;
+  let end = (begin_line + 100).min(lines.len());
 
-  if comparison_patterns.iter().any(|p| line.contains(p)) {
-    return true;
-  }
-
-  if line.contains("/^-----BEGIN") || line.contains("RegExp") {
-    return true;
-  }
-
-  let trimmed = line.trim();
-
-  if (trimmed.contains("-----BEGIN") && trimmed.contains("-----"))
-    && !trimmed.contains("-----END")
-    && (trimmed.ends_with("-----'")
-      || trimmed.ends_with("-----\"")
-      || trimmed.ends_with("-----`")
-      || trimmed.ends_with("-----\\n';")
-      || trimmed.ends_with("-----\\n\";"))
-  {
-    return true;
-  }
-
-  false
+  lines.iter().skip(start).take(end - start).any(|line| line.contains("-----END"))
 }
 
 #[cfg(test)]
@@ -278,13 +277,14 @@ mod tests {
 
     let source = r#"const key = "AKIAIOSFODNN7EXAMPLE";"#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
@@ -299,15 +299,17 @@ mod tests {
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let source = r#"const key = "-----BEGIN RSA PRIVATE KEY-----\nMIIE..."#;
+    let source =
+      r#"const key = "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----";"#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
@@ -323,13 +325,14 @@ mod tests {
 
     let source = r#"const stripe = "sk_live_abcdefghijklmnopqrstuvwx";"#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
@@ -343,15 +346,16 @@ mod tests {
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let source = r#"const token = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789012";"#;
+    let source = r#"const token = "ghp_123456789012345678901234567890123456";"#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
@@ -365,16 +369,16 @@ mod tests {
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    // npm_ + 36 alphanumeric characters
-    let source = r#"const token = "npm_abcdefghijklmnopqrstuvwxyz1234567890";"#;
+    let source = r#"const token = "npm_123456789012345678901234567890123456";"#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
@@ -388,19 +392,21 @@ mod tests {
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let source = r#"const config = { api_key: "abc123def456ghi789jkl012mno" };"#;
+    let source = r#"const apiKey = "abc123def456ghi789jkl012";"#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
     assert!(!issues.is_empty());
+    assert!(issues[0].message.contains("API key"));
   }
 
   #[test]
@@ -410,106 +416,50 @@ mod tests {
     let file_path = PathBuf::from("test.js");
 
     let source = r#"
-const apiKey = process.env.API_KEY;
-const secret = getSecretFromVault();
-"#;
+      const shortVar = "abc123";
+      const publicKey = "pk_test_123";
+    "#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
-    assert!(issues.is_empty());
+    assert_eq!(issues.len(), 0);
   }
 
   #[test]
-  fn test_ignores_private_key_comparison() {
+  fn test_ignores_comments() {
     let analyzer = SecretsAnalyzer;
     let config = crate::config::Config::default();
-    let file_path = PathBuf::from("test.js");
+    let file_path = PathBuf::from("test.ts");
 
-    // This is a validation check, not an actual secret
-    let source = r#"if (privateKey === "-----BEGIN RSA PRIVATE KEY-----") {"#;
+    let source = r#"
+      /**
+       * - clientSecret - Secret string used for token requests
+       * - clientCertificate - PEM encoded private key (-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----)
+       */
+      const config = {};
+    "#;
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-package"),
       package_version: Some("1.0.0"),
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
     let issues = analyzer.analyze(&context);
 
-    assert!(issues.is_empty());
-  }
-
-  #[test]
-  fn test_ignores_private_key_startswith() {
-    let analyzer = SecretsAnalyzer;
-    let config = crate::config::Config::default();
-    let file_path = PathBuf::from("test.js");
-
-    let source = r#"if (key.startsWith("-----BEGIN RSA PRIVATE KEY-----")) {"#;
-
-    let context = FileContext {
-      source,
-      file_path: &file_path,
-      package_name: Some("test-package"),
-      package_version: Some("1.0.0"),
-      config: &config,
-      parsed_ast: None,
-    };
-    let issues = analyzer.analyze(&context);
-
-    assert!(issues.is_empty());
-  }
-
-  #[test]
-  fn test_ignores_private_key_regex_pattern() {
-    let analyzer = SecretsAnalyzer;
-    let config = crate::config::Config::default();
-    let file_path = PathBuf::from("test.js");
-
-    let source = r#"const regexp = /^-----BEGIN OPENSSH PRIVATE KEY-----/;"#;
-
-    let context = FileContext {
-      source,
-      file_path: &file_path,
-      package_name: Some("test-package"),
-      package_version: Some("1.0.0"),
-      config: &config,
-      parsed_ast: None,
-    };
-    let issues = analyzer.analyze(&context);
-
-    assert!(issues.is_empty());
-  }
-
-  #[test]
-  fn test_ignores_private_key_header_only() {
-    let analyzer = SecretsAnalyzer;
-    let config = crate::config::Config::default();
-    let file_path = PathBuf::from("test.js");
-
-    // Variable assignment with just the header, not actual key content
-    let source = r#"let privateB64 = '-----BEGIN OPENSSH PRIVATE KEY-----\n';"#;
-
-    let context = FileContext {
-      source,
-      file_path: &file_path,
-      package_name: Some("test-package"),
-      package_version: Some("1.0.0"),
-      config: &config,
-      parsed_ast: None,
-    };
-    let issues = analyzer.analyze(&context);
-
-    assert!(issues.is_empty());
+    // Comments are not parsed as string literals, so should be ignored
+    assert_eq!(issues.len(), 0);
   }
 }

@@ -15,7 +15,6 @@ impl FileAnalyzer for MinifiedAnalyzer {
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
     let mut issues = vec![];
 
-    // Check for long lines without allocating a vector of all lines
     if let Some((line_num, line)) = context
       .source
       .lines()
@@ -33,9 +32,9 @@ impl FileAnalyzer for MinifiedAnalyzer {
         context.file_path.to_str().unwrap_or(""),
         line_num,
         &message,
+        context.package_name,
       );
 
-      // Take first 80 characters safely to avoid splitting multi-byte UTF-8 chars
       let preview: String = line.chars().take(80).collect();
 
       issues.push(Issue {
@@ -57,8 +56,13 @@ impl FileAnalyzer for MinifiedAnalyzer {
       if ratio < MAX_WHITESPACE_RATIO {
         let message = "File has very low whitespace ratio. It appears to be minified.".to_string();
 
-        let id =
-          generate_issue_id(self.name(), context.file_path.to_str().unwrap_or(""), 1, &message);
+        let id = generate_issue_id(
+          self.name(),
+          context.file_path.to_str().unwrap_or(""),
+          1,
+          &message,
+          context.package_name,
+        );
 
         issues.push(Issue {
           issue_type: self.name().to_string(),

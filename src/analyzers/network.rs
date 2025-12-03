@@ -61,6 +61,7 @@ struct NetworkVisitor<'a> {
   issues: Vec<Issue>,
   analyzer_name: &'static str,
   file_path: &'a str,
+  package_name: Option<&'a str>,
   line_index: LineIndex,
   allowed_hosts: Vec<String>,
   variable_map: VariableMap,
@@ -77,7 +78,8 @@ impl NetworkVisitor<'_> {
     }
 
     let message = "HTTP request detected".to_string();
-    let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
+    let id =
+      generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
 
     self.issues.push(Issue {
       issue_type: self.analyzer_name.to_string(),
@@ -112,7 +114,8 @@ impl AstVisitor for NetworkVisitor<'_> {
 
       if callee == "WebSocket" {
         let message = "Socket connection detected";
-        let id = generate_issue_id(self.analyzer_name, self.file_path, line, message);
+        let id =
+          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
         self.issues.push(Issue {
           issue_type: self.analyzer_name.to_string(),
@@ -131,7 +134,8 @@ impl AstVisitor for NetworkVisitor<'_> {
       // http/https module methods
       if (object == "http" || object == "https") && HTTP_METHODS.contains(&callee.as_str()) {
         let message = "HTTP request function detected";
-        let id = generate_issue_id(self.analyzer_name, self.file_path, line, message);
+        let id =
+          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
         self.issues.push(Issue {
           issue_type: self.analyzer_name.to_string(),
@@ -147,7 +151,8 @@ impl AstVisitor for NetworkVisitor<'_> {
 
       if (object == "net" || object == "socket") && SOCKET_FUNCTIONS.contains(&callee.as_str()) {
         let message = "Socket connection detected";
-        let id = generate_issue_id(self.analyzer_name, self.file_path, line, message);
+        let id =
+          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
         self.issues.push(Issue {
           issue_type: self.analyzer_name.to_string(),
@@ -195,6 +200,7 @@ impl FileAnalyzer for NetworkAnalyzer {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
+      package_name: context.package_name,
       line_index: LineIndex::new(context.source),
       allowed_hosts,
       variable_map,

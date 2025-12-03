@@ -70,6 +70,7 @@ struct ProcessVisitor<'a> {
   issues: Vec<Issue>,
   analyzer_name: &'static str,
   file_path: &'a str,
+  package_name: Option<&'a str>,
   line_index: LineIndex,
   has_child_process_import: bool,
   variable_map: &'a VariableMap,
@@ -150,7 +151,8 @@ impl AstVisitor for ProcessVisitor<'_> {
 
         let message = format!("Process spawning detected via child_process.{}", callee);
 
-        let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
+        let id =
+          generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
 
         self.issues.push(Issue {
           issue_type: self.analyzer_name.to_string(),
@@ -171,7 +173,13 @@ impl AstVisitor for ProcessVisitor<'_> {
             let message =
               "Low-level process spawning detected via process.binding('spawn_sync')".to_string();
 
-            let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
+            let id = generate_issue_id(
+              self.analyzer_name,
+              self.file_path,
+              line,
+              &message,
+              self.package_name,
+            );
 
             self.issues.push(Issue {
               issue_type: self.analyzer_name.to_string(),
@@ -203,7 +211,8 @@ impl AstVisitor for ProcessVisitor<'_> {
 
         let message = format!("Process spawning detected via {}", callee);
 
-        let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
+        let id =
+          generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
 
         self.issues.push(Issue {
           issue_type: self.analyzer_name.to_string(),
@@ -243,6 +252,7 @@ impl FileAnalyzer for ProcessAnalyzer {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
+      package_name: context.package_name,
       line_index: LineIndex::new(context.source),
       has_child_process_import: false,
       variable_map,
@@ -270,6 +280,7 @@ impl FileAnalyzer for ProcessAnalyzer {
             context.file_path.to_str().unwrap_or(""),
             line_num + 1,
             &message,
+            context.package_name,
           );
 
           if !visitor.issues.iter().any(|i| i.line == line_num + 1 && i.message == message) {

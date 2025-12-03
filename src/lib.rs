@@ -159,6 +159,20 @@ pub async fn run(args: Vec<String>) -> Result<()> {
 
   reporter.report(&results, &report_ctx).map_err(|e| NapiError::from_reason(e.to_string()))?;
 
+  // After reporting, print information about ignored issue IDs that had no matches
+  if !ignore_issues.is_empty() {
+    if let Ok(used_ignored) = analyze_ctx.ignored_ids.lock() {
+      let used: std::collections::HashSet<_> = used_ignored.iter().cloned().collect();
+      let unused: Vec<_> = ignore_issues.iter().filter(|id| !used.contains(*id)).cloned().collect();
+      if !unused.is_empty() {
+        println!("Note: The following ignored issue IDs had no matching issues:");
+        for id in unused {
+          println!("  - {}", id);
+        }
+      }
+    }
+  }
+
   if let Some(collector) = benchmark_collector {
     print_benchmark_report(&collector.get_results(), duration);
   } else {

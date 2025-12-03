@@ -78,7 +78,7 @@ impl PackageAnalyzer for TyposquatAnalyzer {
       let message =
         "Package name contains non-ASCII characters (potential homoglyph attack)".to_string();
 
-      let id = generate_issue_id(self.name(), pkg_name, 0, &message);
+      let id = generate_issue_id(self.name(), pkg_name, 0, &message, Some(pkg_name));
 
       issues.push(Issue {
         issue_type: self.name().to_string(),
@@ -112,7 +112,7 @@ impl PackageAnalyzer for TyposquatAnalyzer {
           pkg_name, popular, distance
         );
 
-        let id = generate_issue_id(self.name(), pkg_name, 0, &message);
+        let id = generate_issue_id(self.name(), pkg_name, 0, &message, Some(pkg_name));
 
         issues.push(Issue {
           issue_type: self.name().to_string(),

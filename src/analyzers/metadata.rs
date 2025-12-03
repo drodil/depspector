@@ -43,6 +43,7 @@ struct MetadataVisitor<'a> {
   issues: Vec<Issue>,
   analyzer_name: &'static str,
   file_path: &'a str,
+  package_name: Option<&'a str>,
   line_index: LineIndex,
 }
 
@@ -54,7 +55,8 @@ impl AstVisitor for MetadataVisitor<'_> {
         let line = call.line.max(1);
         let message = format!("Suspicious system metadata collection detected: os.{}()", callee);
 
-        let id = generate_issue_id(self.analyzer_name, self.file_path, line, &message);
+        let id =
+          generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
 
         self.issues.push(Issue {
           issue_type: self.analyzer_name.to_string(),
@@ -90,6 +92,7 @@ impl FileAnalyzer for MetadataAnalyzer {
       issues: vec![],
       analyzer_name: self.name(),
       file_path: context.file_path.to_str().unwrap_or(""),
+      package_name: context.package_name,
       line_index: LineIndex::new(context.source),
     };
 

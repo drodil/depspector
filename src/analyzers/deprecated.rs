@@ -56,7 +56,13 @@ impl PackageAnalyzer for DeprecatedAnalyzer {
           severity: Severity::Medium,
           code: None,
           analyzer: Some(self.name().to_string()),
-          id: Some(crate::util::generate_issue_id(self.name(), context.name, 0, "deprecated")),
+          id: Some(crate::util::generate_issue_id(
+            self.name(),
+            context.name,
+            0,
+            "deprecated",
+            Some(context.name),
+          )),
           file: None,
         });
       }

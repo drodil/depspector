@@ -44,6 +44,7 @@ impl FileAnalyzer for BufferAnalyzer {
               context.file_path.to_str().unwrap_or(""),
               line_num + 1,
               &message,
+              context.package_name,
             );
 
             issues.push(Issue {

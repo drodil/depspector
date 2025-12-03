@@ -51,7 +51,7 @@ impl PackageAnalyzer for ReputationAnalyzer {
     if metadata.maintainers.len() == 1 {
       let message = "Package has a single maintainer.".to_string();
 
-      let id = generate_issue_id(self.name(), context.name, 0, &message);
+      let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
 
       issues.push(Issue {
         issue_type: self.name().to_string(),
@@ -74,7 +74,7 @@ impl PackageAnalyzer for ReputationAnalyzer {
           publisher.name
         );
 
-        let id = generate_issue_id(self.name(), context.name, 0, &message);
+        let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
 
         issues.push(Issue {
           issue_type: self.name().to_string(),

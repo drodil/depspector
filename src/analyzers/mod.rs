@@ -224,6 +224,7 @@ pub struct AnalyzeContext<'a> {
   pub prefetched: Option<Arc<PrefetchedData>>,
   pub benchmark: Option<BenchmarkCollector>,
   pub dependency_graph: Option<DependencyGraph>,
+  pub ignored_ids: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl<'a> AnalyzeContext<'a> {
@@ -250,6 +251,7 @@ impl<'a> AnalyzeContext<'a> {
       prefetched: None,
       benchmark: None,
       dependency_graph: None,
+      ignored_ids: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
     }
   }
 
@@ -433,6 +435,17 @@ impl Analyzer {
     config: &Config,
     benchmark: Option<&BenchmarkCollector>,
   ) -> Vec<Issue> {
+    self.analyze_file_with_package(source, file_path, config, benchmark, None)
+  }
+
+  fn analyze_file_with_package(
+    &self,
+    source: &str,
+    file_path: &Path,
+    config: &Config,
+    benchmark: Option<&BenchmarkCollector>,
+    package_name: Option<&str>,
+  ) -> Vec<Issue> {
     let file_size = source.len();
     let max_file_size = config.max_file_size;
 
@@ -454,7 +467,7 @@ impl Analyzer {
     let context = FileContext {
       source,
       file_path,
-      package_name: None,
+      package_name,
       package_version: None,
       config,
       parsed_ast: parsed_ast.as_ref(),
@@ -755,11 +768,25 @@ impl Analyzer {
       b.add_files(js_entries.len());
     }
 
-    let file_issues = self.analyze_files_with_benchmark(&js_entries, ctx);
+    let file_issues = self.analyze_files_with_benchmark(&js_entries, ctx, Some(&wi.name));
 
     let mut all_issues = package_issues;
     all_issues.extend(file_issues);
-    all_issues.retain(|i| i.id.as_ref().map(|id| !ctx.ignore_issues.contains(id)).unwrap_or(true));
+
+    let mut seen_ids = std::collections::HashSet::new();
+    all_issues.retain(|issue| {
+      if let Some(id) = &issue.id {
+        if ctx.ignore_issues.contains(id) {
+          if let Ok(mut set) = ctx.ignored_ids.lock() {
+            set.insert(id.clone());
+          }
+          return false;
+        }
+        seen_ids.insert(id.clone())
+      } else {
+        true
+      }
+    });
 
     let trust_score = TrustScore::calculate(&all_issues);
 
@@ -822,6 +849,7 @@ impl Analyzer {
     &self,
     js_entries: &[PathBuf],
     ctx: &AnalyzeContext<'_>,
+    package_name: Option<&str>,
   ) -> Vec<Issue> {
     use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -846,14 +874,28 @@ impl Analyzer {
           }
         }
 
-        let mut file_issues =
-          self.analyze_file_with_benchmark(&source, js_path, ctx.config, ctx.benchmark.as_ref());
+        let mut file_issues = self.analyze_file_with_package(
+          &source,
+          js_path,
+          ctx.config,
+          ctx.benchmark.as_ref(),
+          package_name,
+        );
         let file_path_str = normalize_path(&js_path.to_string_lossy());
         for issue in &mut file_issues {
           issue.file = Some(file_path_str.clone());
         }
-        file_issues
-          .retain(|i| i.id.as_ref().map(|id| !ctx.ignore_issues.contains(id)).unwrap_or(true));
+        file_issues.retain(|i| {
+          if let Some(id) = &i.id {
+            if ctx.ignore_issues.contains(id) {
+              if let Ok(mut set) = ctx.ignored_ids.lock() {
+                set.insert(id.clone());
+              }
+              return false;
+            }
+          }
+          true
+        });
         Some(file_issues)
       })
       .flatten()

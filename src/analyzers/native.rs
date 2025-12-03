@@ -31,7 +31,7 @@ impl PackageAnalyzer for NativeAnalyzer {
     if fs::metadata(&binding_gyp_path).is_ok() {
       let message = "Package contains native code (binding.gyp). Native modules can execute arbitrary code during build.";
 
-      let id = generate_issue_id(self.name(), context.name, 0, message);
+      let id = generate_issue_id(self.name(), context.name, 0, message, Some(context.name));
 
       issues.push(Issue {
         issue_type: self.name().to_string(),
@@ -49,7 +49,7 @@ impl PackageAnalyzer for NativeAnalyzer {
     if fs::metadata(&cmake_path).is_ok() {
       let message = "Package contains CMakeLists.txt. May build native code during installation.";
 
-      let id = generate_issue_id(self.name(), context.name, 0, message);
+      let id = generate_issue_id(self.name(), context.name, 0, message, Some(context.name));
 
       issues.push(Issue {
         issue_type: self.name().to_string(),
@@ -73,7 +73,7 @@ impl PackageAnalyzer for NativeAnalyzer {
       if has_dep {
         let message = format!("Package depends on native build tool: \"{}\".", native_dep);
 
-        let id = generate_issue_id(self.name(), context.name, 0, &message);
+        let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
 
         issues.push(Issue {
           issue_type: self.name().to_string(),

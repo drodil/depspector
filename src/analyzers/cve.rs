@@ -85,7 +85,7 @@ impl PackageAnalyzer for CVEAnalyzer {
 
       let message = format!("{}: {}", vuln.id, summary);
 
-      let id = generate_issue_id(self.name(), context.name, 0, &message);
+      let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
 
       issues.push(Issue {
         issue_type: self.name().to_string(),

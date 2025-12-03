@@ -180,7 +180,7 @@ Create a `.depspectorrc` file in your project root:
     }
   },
   "exclude": ["internal-package"],
-  "ignoreIssues": ["a1b2c3d4e5f6", "9f8e7d6c5b4a"],
+  "ignoreIssues": ["MYPACKAG-NETWORK-A1B2C3", "OTHERPACK-SECRETS-9F8E7D"],
   "exitWithFailureOnLevel": "high",
   "reportLevel": "medium"
 }
@@ -293,7 +293,7 @@ Sometimes you may want to ignore specific issues that are false positives or acc
 When you run a scan, issue IDs are shown in gray brackets after each finding:
 
 ```
-[MEDIUM] Suspicious network request detected (Line 42) [ID: a1b2c3d4e5f6]
+[MEDIUM] Suspicious network request detected (Line 42) [ID: MYPACKAG-NETWORK-A1B2C3]
 ```
 
 ### Ignoring via Configuration
@@ -302,7 +302,7 @@ Add issue IDs to your `.depspectorrc` file:
 
 ```json
 {
-  "ignoreIssues": ["a1b2c3d4e5f6", "9f8e7d6c5b4a"]
+  "ignoreIssues": ["MYPACKAG-NETWORK-A1B2C3", "OTHERPACK-SECRETS-9F8E7D"]
 }
 ```
 
@@ -312,10 +312,10 @@ You can also ignore issues temporarily using the `--ignore-issue` flag:
 
 ```bash
 # Ignore a single issue
-npx depspector --ignore-issue a1b2c3d4e5f6
+npx depspector --ignore-issue MYPACKAG-NETWORK-A1B2C3
 
 # Ignore multiple issues
-npx depspector --ignore-issue a1b2c3d4e5f6 --ignore-issue 9f8e7d6c5b4a
+npx depspector --ignore-issue MYPACKAG-NETWORK-A1B2C3 --ignore-issue OTHERPACK-SECRETS-9F8E7D
 ```
 
 The CLI flag can be combined with configuration file settings. Both will be merged together.

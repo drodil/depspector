@@ -12,8 +12,6 @@ pub fn get_line(source: &str, line_number: usize) -> String {
     .unwrap_or_default()
 }
 
-/// Pre-computed line index for O(1) line lookups.
-/// Stores byte offsets for each line start, allowing fast retrieval of any line.
 pub struct LineIndex {
   source: String,
   line_starts: Vec<usize>,
@@ -57,10 +55,98 @@ pub fn sha256_hash(input: &str) -> String {
   hex::encode(result)
 }
 
-pub fn generate_issue_id(analyzer: &str, file_path: &str, line: usize, message: &str) -> String {
-  let input = format!("{}:{}:{}:{}", analyzer, file_path, line, message);
-  let hash = sha256_hash(&input);
-  hash[..12].to_string()
+fn extract_relative_path(file_path: &str) -> String {
+  let normalized = file_path.replace('\\', "/");
+
+  // Look for node_modules with or without leading slash
+  let nm_pattern = if normalized.contains("/node_modules/") {
+    "/node_modules/"
+  } else if normalized.starts_with("node_modules/") {
+    "node_modules/"
+  } else {
+    ""
+  };
+
+  if !nm_pattern.is_empty() {
+    let last_nm_idx = normalized.rfind(nm_pattern).unwrap();
+    let after_nm = &normalized[last_nm_idx + nm_pattern.len()..];
+
+    let pkg_end = if after_nm.starts_with('@') {
+      after_nm.find('/').and_then(|first| after_nm[first + 1..].find('/').map(|s| first + 1 + s))
+    } else {
+      after_nm.find('/')
+    };
+
+    if let Some(idx) = pkg_end {
+      return after_nm[idx + 1..].to_string();
+    }
+  }
+
+  normalized.rsplit('/').next().unwrap_or(&normalized).to_string()
+}
+
+fn normalize_line_bucket(line: usize) -> usize {
+  (line / 20) * 20
+}
+
+pub fn generate_issue_id(
+  analyzer: &str,
+  file_path: &str,
+  line: usize,
+  message: &str,
+  package_name: Option<&str>,
+) -> String {
+  let pkg_prefix = package_name
+    .map(|name| {
+      let clean = name.trim_start_matches('@').replace('/', "-");
+      let prefix: String = clean.chars().take(8).collect();
+      prefix
+    })
+    .unwrap_or_else(|| "unknown".to_string());
+
+  let relative_path = extract_relative_path(file_path);
+
+  let normalized_relative = relative_path
+    .replace("dist-node/", "")
+    .replace("dist-src/", "")
+    .replace("dist-web/", "")
+    .replace("dist-cjs/", "")
+    .replace("dist-esm/", "")
+    .replace("dist-types/", "")
+    .replace("dist/", "")
+    .replace("lib/", "")
+    .replace("build/", "")
+    .replace("cjs/", "")
+    .replace("esm/", "")
+    .replace("umd/", "");
+
+  let message_sig: String =
+    message.split_whitespace().take(4).collect::<Vec<_>>().join(" ").chars().take(40).collect();
+
+  let line_bucket = normalize_line_bucket(line);
+  let hash_input = format!("{}:{}:{}", normalized_relative, line_bucket, message_sig);
+  let hash = sha256_hash(&hash_input);
+
+  let id = format!("{}-{}-{}", pkg_prefix, analyzer, &hash[..6]);
+  let cleaned = id.replace("--", "-");
+  cleaned.to_uppercase()
+}
+
+pub fn matches_ignore_id(issue_id: &str, ignore_id: &str) -> bool {
+  if issue_id == ignore_id {
+    return true;
+  }
+
+  if issue_id.contains('-') && ignore_id.contains('-') {
+    let issue_parts: Vec<_> = issue_id.rsplitn(2, '-').collect();
+    let ignore_parts: Vec<_> = ignore_id.rsplitn(2, '-').collect();
+
+    if issue_parts.len() == 2 && ignore_parts.len() == 2 {
+      return issue_parts[1] == ignore_parts[1];
+    }
+  }
+
+  false
 }
 
 pub fn is_base64_like(s: &str) -> bool {
@@ -171,9 +257,97 @@ mod tests {
 
   #[test]
   fn test_generate_issue_id() {
-    let id = generate_issue_id("buffer", "test.js", 10, "test message");
-    assert_eq!(id.len(), 12);
-    assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
+    let id = generate_issue_id("buffer", "test.js", 10, "test message", Some("my-package"));
+    // New format: {pkg_prefix}-{analyzer}-{hash} in uppercase
+    assert!(id.starts_with("MY-PACKA-BUFFER-"));
+    assert_eq!(id.len(), 22); // 8 + 1 + 6 + 1 + 6 = 22
+  }
+
+  #[test]
+  fn test_generate_issue_id_scoped_package() {
+    let id =
+      generate_issue_id("secrets", "dist/index.js", 50, "Private key found", Some("@octokit/app"));
+    // Scoped package: @octokit/app -> octokit-app (scope removed, / replaced, uppercase)
+    assert!(id.starts_with("OCTOKIT-"));
+    assert!(id.contains("-SECRETS-"));
+    // Should not have double dashes
+    assert!(!id.contains("--"));
+  }
+
+  #[test]
+  fn test_generate_issue_id_line_tolerance() {
+    // Lines within the same 20-line bucket should generate the same ID
+    let id1 = generate_issue_id("eval", "src/file.js", 65, "eval detected", Some("pkg"));
+    let id2 = generate_issue_id("eval", "src/file.js", 70, "eval detected", Some("pkg"));
+    let id3 = generate_issue_id("eval", "src/file.js", 79, "eval detected", Some("pkg"));
+
+    // All in bucket 60-79
+    assert_eq!(id1, id2);
+    assert_eq!(id2, id3);
+
+    // Line 80 is in a different bucket (80-99)
+    let id4 = generate_issue_id("eval", "src/file.js", 80, "eval detected", Some("pkg"));
+    assert_ne!(id3, id4);
+  }
+
+  #[test]
+  fn test_generate_issue_id_dist_variants() {
+    // Same issue in different dist folders should have the same ID
+    let id1 = generate_issue_id(
+      "secrets",
+      "node_modules/@octokit/auth-app/dist-node/index.js",
+      67,
+      "Potential Private Key",
+      Some("@octokit/auth-app"),
+    );
+    let id2 = generate_issue_id(
+      "secrets",
+      "node_modules/@octokit/auth-app/dist-src/index.js",
+      65,
+      "Potential Private Key",
+      Some("@octokit/auth-app"),
+    );
+    let id3 = generate_issue_id(
+      "secrets",
+      "node_modules/@octokit/auth-app/dist-web/index.js",
+      71,
+      "Potential Private Key",
+      Some("@octokit/auth-app"),
+    );
+
+    // All three should have the same ID since they're the same issue type
+    // in the same package, same file, with lines in the same bucket (60-79)
+    assert_eq!(id1, id2);
+    assert_eq!(id2, id3);
+  }
+
+  #[test]
+  fn test_extract_relative_path() {
+    // Extracts path after package name
+    assert_eq!(extract_relative_path("node_modules/@scope/pkg/dist/index.js"), "dist/index.js");
+    assert_eq!(
+      extract_relative_path("node_modules/@scope/pkg/node_modules/@other/dep/src/file.js"),
+      "src/file.js"
+    );
+    // Returns filename when no node_modules structure
+    assert_eq!(extract_relative_path("simple.js"), "simple.js");
+    // Returns filename when path has no package structure
+    assert_eq!(extract_relative_path("src/dist/index.js"), "index.js");
+  }
+
+  #[test]
+  fn test_matches_ignore_id() {
+    // Exact match
+    assert!(matches_ignore_id("pkg-secrets-abc123", "pkg-secrets-abc123"));
+
+    // Prefix match (ignores hash differences)
+    assert!(matches_ignore_id("pkg-secrets-abc123", "pkg-secrets-def456"));
+
+    // Different analyzer - no match
+    assert!(!matches_ignore_id("pkg-secrets-abc123", "pkg-eval-abc123"));
+
+    // Different package - no match
+    assert!(!matches_ignore_id("pkg1-secrets-abc123", "pkg2-secrets-abc123"));
   }
 
   #[test]

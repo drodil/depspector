@@ -194,21 +194,6 @@ impl Reporter {
         String::new()
       };
 
-      let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-      let unique_issues: Vec<_> = results
-        .iter()
-        .flat_map(|r| r.issues.iter().map(move |i| (i, &r.package_path, r.is_from_cache)))
-        .filter(
-          |(issue, _, _)| {
-            if let Some(id) = &issue.id {
-              seen_ids.insert(id.clone())
-            } else {
-              true
-            }
-          },
-        )
-        .collect();
-
       println!(
         "📦 {} ({}){}",
         package.cyan().bold(),
@@ -216,7 +201,13 @@ impl Reporter {
         trust_display.dimmed()
       );
 
-      for (issue, package_path, is_from_cache) in &unique_issues {
+      // Issues are already deduplicated in the analyzer
+      let all_issues: Vec<_> = results
+        .iter()
+        .flat_map(|r| r.issues.iter().map(move |i| (i, &r.package_path, r.is_from_cache)))
+        .collect();
+
+      for (issue, package_path, is_from_cache) in &all_issues {
         if issue.severity < min_severity {
           continue;
         }
