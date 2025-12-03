@@ -133,6 +133,8 @@ node bin.js [options]
 - `--report-level <level>`: Minimum severity level to report (`critical`, `high`, `medium`, `low`). Overrides the config file setting.
 - `--benchmark`: Show detailed timing information for each analyzer and phase. Useful for performance profiling and identifying slow analyzers.
 - `--include-tests`: Include test files in analysis. By default, test files are skipped (e.g., `*.test.js`, `*.spec.ts`, `jest.config.js`).
+- `--include-dev-deps`: Include dev dependencies in analysis. By default, dev dependencies are excluded to focus on production security.
+- `--skip-transient`: Skip transient dependencies and only scan packages listed directly in your root `package.json` (both `dependencies` and `devDependencies` if `--include-dev-deps` is set).
 
 ## Performance
 
@@ -195,10 +197,40 @@ Create a `.depspectorrc` file in your project root:
 | `reportLevel`            | `"critical" \| "high" \| "medium" \| "low"`          | `"low"`         | Only report issues at this severity level or higher. If not set, all issues are reported.                                    |
 | `failFast`               | boolean                                              | `false`         | Stop analysis immediately when first issue at or above `exitWithFailureOnLevel` is found.                                    |
 | `includeTests`           | boolean                                              | `false`         | Include test files in analysis. By default, test files are skipped (see patterns below).                                     |
+| `includeDevDeps`         | boolean                                              | `false`         | Include dev dependencies in analysis. By default, dev-only packages are excluded to focus on production security.            |
+| `includeOptionalDeps`    | boolean                                              | `false`         | Include optional dependencies in analysis. By default, optional packages are excluded.                                       |
+| `skipTransient`          | boolean                                              | `false`         | Skip transient dependencies and only scan packages listed in root `package.json`.                                            |
 | `cacheDir`               | string                                               | System temp dir | Directory to cache analysis results. Defaults to OS temp directory.                                                          |
 | `maxFileSize`            | number                                               | `5242880`       | Maximum file size in bytes for AST-based analyzers. Larger files are skipped. Default 5MB.                                   |
 | `astTimeoutMs`           | number                                               | `0`             | Timeout in milliseconds for AST parsing per file. 0 means no timeout. Useful for skipping files that take too long to parse. |
 | `npm`                    | Object                                               | `{}`            | NPM registry configuration (see below).                                                                                      |
+
+**Dependency Filtering:**
+
+By default, Depspector excludes dev and optional dependencies to focus on production security. This behavior can be customized:
+
+- **Dev dependencies**: Packages that are only reachable through `devDependencies` in the dependency tree are excluded. Use `includeDevDeps: true` or `--include-dev-deps` to include them.
+- **Optional dependencies**: Packages that are only reachable through `optionalDependencies` in the dependency tree are excluded. Use `includeOptionalDeps: true` or `--include-optional-deps` to include them.
+- **Transient dependencies**: Packages that are not directly listed in your root `package.json` (they're dependencies of your dependencies). Use `skipTransient: true` or `--skip-transient` to exclude them and only scan direct dependencies.
+
+**Example combinations:**
+
+```bash
+# Scan only production dependencies (default)
+npx depspector
+
+# Scan production + dev dependencies
+npx depspector --include-dev-deps
+
+# Scan production + optional dependencies
+npx depspector --include-optional-deps
+
+# Scan only direct dependencies (no transient)
+npx depspector --skip-transient
+
+# Scan only direct production + dev dependencies
+npx depspector --include-dev-deps --skip-transient
+```
 
 **Test File Patterns (skipped by default):**
 

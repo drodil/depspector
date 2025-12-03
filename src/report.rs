@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use colored::*;
 
-use crate::analyzers::{AnalysisResult, Severity, TrustScore};
+use crate::analyzers::{AnalysisResult, DependencyType, Severity, TrustScore};
 
 const MAX_LINE_LENGTH: usize = 120;
 
@@ -15,6 +15,16 @@ fn trust_level_colored(score: f64) -> ColoredString {
     70..=89 => "Moderate".yellow(),
     50..=69 => "Low".truecolor(255, 165, 0), // Orange
     _ => "Very Low".red(),
+  }
+}
+
+fn dependency_type_display(dep_type: DependencyType) -> ColoredString {
+  match dep_type {
+    DependencyType::Direct => "direct".green(),
+    DependencyType::Dev => "dev".blue(),
+    DependencyType::Optional => "optional".cyan(),
+    DependencyType::Peer => "peer".magenta(),
+    DependencyType::Unknown => "unknown".dimmed(),
   }
 }
 
@@ -158,7 +168,6 @@ impl Reporter {
     println!("\n{}", "Security Analysis Report".bold().underline());
     println!();
 
-    // Group results by package
     let mut by_package: std::collections::HashMap<String, Vec<&AnalysisResult>> =
       std::collections::HashMap::new();
 
@@ -167,9 +176,9 @@ impl Reporter {
       by_package.entry(pkg).or_default().push(result);
     }
 
-    let mut trust_scores: Vec<(&str, &TrustScore)> = filtered
+    let mut trust_scores: Vec<(&str, &TrustScore, DependencyType)> = filtered
       .iter()
-      .filter_map(|r| r.package.as_ref().map(|p| (p.as_str(), &r.trust_score)))
+      .filter_map(|r| r.package.as_ref().map(|p| (p.as_str(), &r.trust_score, r.dependency_type)))
       .collect();
 
     trust_scores.sort_by(|a, b| a.1.score.partial_cmp(&b.1.score).unwrap());
@@ -177,6 +186,7 @@ impl Reporter {
 
     for (package, results) in &by_package {
       let trust = results.first().map(|r| &r.trust_score);
+      let dep_type = results.first().map(|r| r.dependency_type).unwrap_or(DependencyType::Unknown);
 
       let trust_display = if let Some(t) = trust {
         format!(" [Trust: {:.0} - {}]", t.score, t.trust_level())
@@ -184,44 +194,62 @@ impl Reporter {
         String::new()
       };
 
-      println!("{}{}", format!("📦 {}", package).cyan().bold(), trust_display.dimmed());
+      let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+      let unique_issues: Vec<_> = results
+        .iter()
+        .flat_map(|r| r.issues.iter().map(move |i| (i, &r.package_path, r.is_from_cache)))
+        .filter(
+          |(issue, _, _)| {
+            if let Some(id) = &issue.id {
+              seen_ids.insert(id.clone())
+            } else {
+              true
+            }
+          },
+        )
+        .collect();
 
-      for result in results {
-        for issue in &result.issues {
-          if issue.severity < min_severity {
-            continue;
-          }
+      println!(
+        "📦 {} ({}){}",
+        package.cyan().bold(),
+        dependency_type_display(dep_type),
+        trust_display.dimmed()
+      );
 
-          let severity_str = match issue.severity {
-            Severity::Critical => "CRITICAL".red().bold(),
-            Severity::High => "HIGH".red(),
-            Severity::Medium => "MEDIUM".yellow(),
-            Severity::Low => "LOW".white(),
-          };
+      for (issue, package_path, is_from_cache) in &unique_issues {
+        if issue.severity < min_severity {
+          continue;
+        }
 
-          let file_path = issue.file.as_ref().unwrap_or(&result.package_path);
-          let location = format!("{}:{}", file_path, issue.line);
-          let location_display = if result.is_from_cache {
-            format!("  {} {}", "↺".dimmed(), location.dimmed())
-          } else {
-            format!("  {}", location)
-          };
+        let severity_str = match issue.severity {
+          Severity::Critical => "CRITICAL".red().bold(),
+          Severity::High => "HIGH".red(),
+          Severity::Medium => "MEDIUM".yellow(),
+          Severity::Low => "LOW".white(),
+        };
 
-          println!(
-            "{}: {} [{}] {}",
-            location_display,
-            severity_str,
-            issue.issue_type.dimmed(),
-            issue.message,
-          );
+        let file_path = issue.file.as_ref().unwrap_or(package_path);
+        let location = format!("{}:{}", file_path, issue.line);
+        let location_display = if *is_from_cache {
+          format!("  {} {}", "↺".dimmed(), location.dimmed())
+        } else {
+          format!("  {}", location)
+        };
 
-          if let Some(code) = &issue.code {
-            println!("      {}", truncate_line(code, MAX_LINE_LENGTH - 6).dimmed());
-          }
+        println!(
+          "{}: {} [{}] {}",
+          location_display,
+          severity_str,
+          issue.issue_type.dimmed(),
+          issue.message,
+        );
 
-          if let Some(id) = &issue.id {
-            println!("      ID: {}", id.dimmed());
-          }
+        if let Some(code) = &issue.code {
+          println!("      {}", truncate_line(code, MAX_LINE_LENGTH - 6).dimmed());
+        }
+
+        if let Some(id) = &issue.id {
+          println!("      ID: {}", id.dimmed());
         }
       }
 
@@ -245,7 +273,7 @@ impl Reporter {
       println!();
       println!("{}", "⚠️  Most Untrusted Packages:".yellow().bold());
 
-      for (package, trust) in trust_scores.iter().take(3) {
+      for (package, trust, dep_type) in trust_scores.iter().take(3) {
         let score_colored = if trust.score < 50.0 {
           format!("{:.0}", trust.score).red()
         } else if trust.score < 70.0 {
@@ -257,8 +285,9 @@ impl Reporter {
         };
 
         println!(
-          "  {} - Trust Score: {} ({}) - {} critical, {} high, {} medium, {} low",
+          "  {} ({}) - Trust Score: {} ({}) - {} critical, {} high, {} medium, {} low",
           package.cyan(),
+          dependency_type_display(*dep_type),
           score_colored,
           trust_level_colored(trust.score),
           trust.critical_count.to_string().red(),
@@ -307,6 +336,8 @@ mod tests {
       }],
       is_from_cache: false,
       trust_score: TrustScore::default(),
+      dependency_type: DependencyType::Unknown,
+      is_transient: false,
     }];
 
     assert!(reporter.has_issues_at_level(&results, "high"));
@@ -333,6 +364,8 @@ mod tests {
         file: None,
       }],
       trust_score: TrustScore::default(),
+      dependency_type: DependencyType::Unknown,
+      is_transient: false,
       is_from_cache: false,
     }];
 

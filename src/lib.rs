@@ -13,6 +13,7 @@ pub mod ast;
 pub mod benchmark;
 pub mod cache;
 pub mod config;
+pub mod dependencies;
 pub mod error;
 pub mod prefetch;
 pub mod registry;
@@ -23,6 +24,7 @@ use crate::analyzers::{AnalyzeContext, Analyzer};
 use crate::benchmark::{print_benchmark_report, BenchmarkCollector};
 use crate::cache::PackageCache;
 use crate::config::Config;
+use crate::dependencies::DependencyGraph;
 use crate::error::format_cli_error;
 use crate::report::{ReportContext, Reporter};
 
@@ -48,11 +50,30 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     .canonicalize()
     .map_err(|e| NapiError::from_reason(format!("Working directory not found: {}", e)))?;
 
+  let package_json_path = working_dir.join("package.json");
+  if !package_json_path.exists() {
+    return Err(NapiError::from_reason(format!(
+      "No package.json found at {}. Please run depspector from a directory containing a package.json file.",
+      package_json_path.display()
+    )));
+  }
+
   let mut config = Config::load(cli.config.as_deref(), Some(&working_dir))?;
 
-  // CLI flag overrides config setting
   if cli.include_tests {
     config.include_tests = true;
+  }
+  if cli.include_dev_deps {
+    config.include_dev_deps = true;
+  }
+  if cli.include_optional_deps {
+    config.include_optional_deps = true;
+  }
+  if cli.skip_peer_deps {
+    config.include_peer_deps = false;
+  }
+  if cli.skip_transient {
+    config.skip_transient = true;
   }
 
   let node_modules_path = working_dir.join(&cli.path);
@@ -94,6 +115,23 @@ pub async fn run(args: Vec<String>) -> Result<()> {
 
   let benchmark_collector = if cli.benchmark { Some(BenchmarkCollector::new()) } else { None };
 
+  // Build dependency graph to determine package types for reporting
+  let dependency_graph = DependencyGraph::build(&working_dir, &node_modules_path);
+  if dependency_graph.total_count() > 0 {
+    debug!("Built dependency graph with {} packages", dependency_graph.total_count());
+  } else {
+    debug!("No packages found in dependency graph");
+  }
+  if !config.include_dev_deps {
+    info!("Found {} dev packages that will be skipped", dependency_graph.dev_count());
+  }
+  if !config.include_optional_deps {
+    info!("Found {} optional packages that will be skipped", dependency_graph.optional_count());
+  }
+  if !config.include_peer_deps {
+    info!("Found {} peer packages that will be skipped", dependency_graph.peer_count());
+  }
+
   let start_time = std::time::Instant::now();
   let analyze_ctx = AnalyzeContext::new(
     &node_modules_path,
@@ -104,7 +142,8 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     cli.concurrency,
     cli.offline,
   )
-  .with_benchmark(benchmark_collector.clone());
+  .with_benchmark(benchmark_collector.clone())
+  .with_dependency_graph(Some(dependency_graph));
   let results = analyzer.analyze_packages(&analyze_ctx).await?;
 
   let duration = start_time.elapsed();
@@ -180,6 +219,17 @@ struct Cli {
   benchmark: bool,
   #[clap(long, help = "Include test files in analysis (skipped by default)")]
   include_tests: bool,
+  #[clap(long, help = "Include dev dependencies in analysis (excluded by default)")]
+  include_dev_deps: bool,
+  #[clap(long, help = "Include optional dependencies in analysis (excluded by default)")]
+  include_optional_deps: bool,
+  #[clap(long, help = "Skip peer dependencies in analysis (included by default)")]
+  skip_peer_deps: bool,
+  #[clap(
+    long,
+    help = "Skip transient dependencies (only scan direct and dev deps from root package.json)"
+  )]
+  skip_transient: bool,
 }
 
 #[cfg(test)]

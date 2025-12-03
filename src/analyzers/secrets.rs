@@ -95,6 +95,7 @@ impl FileAnalyzer for SecretsAnalyzer {
 
       if (matches.matched(1) || matches.matched(2))
         && (RSA_PRIVATE_KEY.is_match(line) || PRIVATE_KEY.is_match(line))
+        && !is_string_comparison(line)
       {
         issues.push(create_issue(
           self.name(),
@@ -224,6 +225,44 @@ fn redact_secret(line: &str) -> String {
   } else {
     trimmed.to_string()
   }
+}
+
+fn is_string_comparison(line: &str) -> bool {
+  let comparison_patterns = [
+    "===",
+    "!==",
+    "==",
+    "!=",
+    ".startsWith(",
+    ".endsWith(",
+    ".includes(",
+    ".indexOf(",
+    ".match(",
+    ".test(",
+  ];
+
+  if comparison_patterns.iter().any(|p| line.contains(p)) {
+    return true;
+  }
+
+  if line.contains("/^-----BEGIN") || line.contains("RegExp") {
+    return true;
+  }
+
+  let trimmed = line.trim();
+
+  if (trimmed.contains("-----BEGIN") && trimmed.contains("-----"))
+    && !trimmed.contains("-----END")
+    && (trimmed.ends_with("-----'")
+      || trimmed.ends_with("-----\"")
+      || trimmed.ends_with("-----`")
+      || trimmed.ends_with("-----\\n';")
+      || trimmed.ends_with("-----\\n\";"))
+  {
+    return true;
+  }
+
+  false
 }
 
 #[cfg(test)]
@@ -374,6 +413,92 @@ mod tests {
 const apiKey = process.env.API_KEY;
 const secret = getSecretFromVault();
 "#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_ignores_private_key_comparison() {
+    let analyzer = SecretsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    // This is a validation check, not an actual secret
+    let source = r#"if (privateKey === "-----BEGIN RSA PRIVATE KEY-----") {"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_ignores_private_key_startswith() {
+    let analyzer = SecretsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"if (key.startsWith("-----BEGIN RSA PRIVATE KEY-----")) {"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_ignores_private_key_regex_pattern() {
+    let analyzer = SecretsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"const regexp = /^-----BEGIN OPENSSH PRIVATE KEY-----/;"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_ignores_private_key_header_only() {
+    let analyzer = SecretsAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    // Variable assignment with just the header, not actual key content
+    let source = r#"let privateB64 = '-----BEGIN OPENSSH PRIVATE KEY-----\n';"#;
 
     let context = FileContext {
       source,

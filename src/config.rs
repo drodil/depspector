@@ -90,6 +90,14 @@ pub struct Config {
   #[serde(default)]
   pub include_tests: bool,
   #[serde(default)]
+  pub include_dev_deps: bool,
+  #[serde(default)]
+  pub include_optional_deps: bool,
+  #[serde(default = "default_true")]
+  pub include_peer_deps: bool,
+  #[serde(default)]
+  pub skip_transient: bool,
+  #[serde(default)]
   pub npm: NpmConfig,
   #[serde(default)]
   pub analyzers: HashMap<String, AnalyzerConfig>,
@@ -107,6 +115,10 @@ fn default_report_level() -> String {
   "low".to_string()
 }
 
+fn default_true() -> bool {
+  true
+}
+
 fn default_max_file_size() -> usize {
   5 * 1024 * 1024 // 5 MB default - larger files are skipped for AST analysis
 }
@@ -121,6 +133,10 @@ impl Default for Config {
       exit_with_failure_on_level: None,
       fail_fast: false,
       include_tests: false,
+      include_dev_deps: false,
+      include_optional_deps: false,
+      include_peer_deps: true,
+      skip_transient: false,
       npm: NpmConfig::default(),
       analyzers: HashMap::new(),
       max_file_size: default_max_file_size(),
@@ -179,6 +195,9 @@ mod tests {
     assert!(config.exclude.is_empty());
     assert!(config.ignore_issues.is_empty());
     assert_eq!(config.report_level, "low");
+    assert!(!config.include_tests);
+    assert!(!config.include_dev_deps);
+    assert!(!config.skip_transient);
   }
 
   #[test]
@@ -246,5 +265,45 @@ mod tests {
     assert_eq!(config.npm.registry, "https://private.registry.com");
     assert_eq!(config.npm.username, Some("myuser".to_string()));
     assert_eq!(config.npm.password, Some("mypass".to_string()));
+  }
+
+  #[test]
+  fn test_parse_include_dev_deps() {
+    let json = r#"{
+            "includeDevDeps": false
+        }"#;
+
+    let config: Config = serde_json::from_str(json).unwrap();
+    assert!(!config.include_dev_deps);
+  }
+
+  #[test]
+  fn test_parse_include_tests() {
+    let json = r#"{
+            "includeTests": true
+        }"#;
+
+    let config: Config = serde_json::from_str(json).unwrap();
+    assert!(config.include_tests);
+  }
+
+  #[test]
+  fn test_parse_skip_transient() {
+    let json = r#"{
+            "skipTransient": true
+        }"#;
+
+    let config: Config = serde_json::from_str(json).unwrap();
+    assert!(config.skip_transient);
+  }
+
+  #[test]
+  fn test_parse_include_optional_deps() {
+    let json = r#"{
+            "includeOptionalDeps": true
+        }"#;
+
+    let config: Config = serde_json::from_str(json).unwrap();
+    assert!(config.include_optional_deps);
   }
 }

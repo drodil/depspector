@@ -76,6 +76,7 @@ rayon = "1.7"
 
 # Performance optimizations
 aho-corasick = "1"
+glob = "0.3.3"
 
 [build-dependencies]
 napi-build = "2"

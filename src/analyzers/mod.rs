@@ -62,6 +62,9 @@ pub enum Severity {
   Critical,
 }
 
+// Re-export dependency types from the dependencies module
+pub use crate::dependencies::{DependencyGraph, DependencyType};
+
 impl Severity {
   pub fn as_str(&self) -> &'static str {
     match self {
@@ -108,14 +111,10 @@ const HIGH_PENALTY: f64 = 8.0;
 const MEDIUM_PENALTY: f64 = 3.0;
 const LOW_PENALTY: f64 = 1.0;
 
-/// Calculate penalty with diminishing returns using logarithmic scaling.
-/// First issues of each severity have full impact, additional issues have less.
 fn calculate_penalty_with_diminishing_returns(count: usize, base_penalty: f64) -> f64 {
   if count == 0 {
     return 0.0;
   }
-  // Use log(1 + count) * base_penalty * scaling_factor
-  // This means: 1 issue = full penalty, 10 issues ≈ 2.4x penalty, 100 issues ≈ 4.6x penalty
   let scaling_factor = 3.0;
   (1.0 + count as f64).ln() * base_penalty * scaling_factor
 }
@@ -177,6 +176,12 @@ pub struct AnalysisResult {
   pub trust_score: TrustScore,
 
   #[serde(default)]
+  pub dependency_type: DependencyType,
+
+  #[serde(default)]
+  pub is_transient: bool,
+
+  #[serde(default)]
   pub is_from_cache: bool,
 }
 
@@ -187,6 +192,8 @@ impl AnalysisResult {
       package: None,
       issues: vec![],
       trust_score: TrustScore::default(),
+      dependency_type: DependencyType::Unknown,
+      is_transient: false,
       is_from_cache: false,
     }
   }
@@ -197,6 +204,8 @@ impl AnalysisResult {
       package: Some(package.to_string()),
       issues: vec![],
       trust_score: TrustScore::default(),
+      dependency_type: DependencyType::Unknown,
+      is_transient: false,
       is_from_cache: false,
     }
   }
@@ -214,6 +223,7 @@ pub struct AnalyzeContext<'a> {
   pub offline: bool,
   pub prefetched: Option<Arc<PrefetchedData>>,
   pub benchmark: Option<BenchmarkCollector>,
+  pub dependency_graph: Option<DependencyGraph>,
 }
 
 impl<'a> AnalyzeContext<'a> {
@@ -239,6 +249,7 @@ impl<'a> AnalyzeContext<'a> {
       offline,
       prefetched: None,
       benchmark: None,
+      dependency_graph: None,
     }
   }
 
@@ -249,6 +260,11 @@ impl<'a> AnalyzeContext<'a> {
 
   pub fn with_benchmark(mut self, benchmark: Option<BenchmarkCollector>) -> Self {
     self.benchmark = benchmark;
+    self
+  }
+
+  pub fn with_dependency_graph(mut self, graph: Option<DependencyGraph>) -> Self {
+    self.dependency_graph = graph;
     self
   }
 }
@@ -615,6 +631,38 @@ impl Analyzer {
           return;
         }
 
+        if let Some(ref graph) = ctx.dependency_graph {
+          let dep_type = graph.get_type(name);
+          if !ctx.config.include_dev_deps && dep_type == DependencyType::Dev {
+            log::debug!("Skipping dev dependency: {}", name);
+            return;
+          }
+          if !ctx.config.include_optional_deps && dep_type == DependencyType::Optional {
+            log::debug!("Skipping optional dependency: {}", name);
+            return;
+          }
+          if !ctx.config.include_peer_deps && dep_type == DependencyType::Peer {
+            log::debug!("Skipping peer dependency: {}", name);
+            return;
+          }
+        }
+
+        // Determine dependency type from graph (if available)
+        let dependency_type = ctx
+          .dependency_graph
+          .as_ref()
+          .map(|g| g.get_type(name))
+          .unwrap_or(DependencyType::Unknown);
+
+        // A package is transient if it's not directly in the root package.json
+        let is_transient =
+          ctx.dependency_graph.as_ref().map(|g| !g.is_direct(name)).unwrap_or(false);
+
+        if ctx.config.skip_transient && is_transient {
+          log::debug!("Skipping transient dependency: {}", name);
+          return;
+        }
+
         if let Some(cache) = ctx.cache {
           if let Some(cached) = cache.get(name, version) {
             let filtered_issues: Vec<_> = cached
@@ -650,6 +698,8 @@ impl Analyzer {
           version: version.to_string(),
           pkg_path,
           package_json,
+          dependency_type,
+          is_transient,
         });
       });
 
@@ -718,6 +768,8 @@ impl Analyzer {
       package: Some(wi.name.clone()),
       issues: all_issues,
       trust_score,
+      dependency_type: wi.dependency_type,
+      is_transient: wi.is_transient,
       is_from_cache: false,
     };
 
@@ -823,6 +875,8 @@ struct WorkItem {
   version: String,
   pkg_path: PathBuf,
   package_json: serde_json::Value,
+  dependency_type: DependencyType,
+  is_transient: bool,
 }
 
 fn is_excluded_dir(segment: &str, config: &Config) -> bool {
@@ -1157,5 +1211,13 @@ mod analyzer_tests {
       "Trust level should be High or Moderate, got {}",
       score.trust_level()
     );
+  }
+
+  #[test]
+  fn test_dependency_type_display() {
+    assert_eq!(DependencyType::Direct.as_str(), "direct");
+    assert_eq!(DependencyType::Dev.as_str(), "dev");
+    assert_eq!(DependencyType::Optional.as_str(), "optional");
+    assert_eq!(DependencyType::Unknown.as_str(), "unknown");
   }
 }
