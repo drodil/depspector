@@ -1,6 +1,6 @@
 {
   "name": "depspector",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Dependency Inspector - A security analysis tool for npm packages",
   "main": "index.js",
   "types": "index.d.ts",

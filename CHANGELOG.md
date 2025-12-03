@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.10](https://github.com/drodil/depspector/compare/v0.0.9...v0.0.10) (2025-12-03)
+
+
+### Features
+
+* **analyzer:** add ip and base64 analyzers ([68c8f30](https://github.com/drodil/depspector/commit/68c8f30a75b7b137e10320a40642162b669b5fea))
+* **analyzer:** support to analyze project files too ([135c87f](https://github.com/drodil/depspector/commit/135c87fc78872a0965a55a83b0c388e73cf13f60))
+* **cache:** allow defining cache max age ([80bea99](https://github.com/drodil/depspector/commit/80bea99a01f170432b3d7fbd7a5c04a5cf4b1061))
+
+
+### Bug Fixes
+
+* prettier ([7384a00](https://github.com/drodil/depspector/commit/7384a008048744e5320d6587eca167fb3aa536ae))
+* revalidate cache on tool update ([a2e72de](https://github.com/drodil/depspector/commit/a2e72de26c219fd41e9a4a6848dce063d289e2e3))
+
 ### [0.0.9](https://github.com/drodil/depspector/compare/v0.0.8...v0.0.9) (2025-12-03)
 
 
