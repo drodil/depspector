@@ -103,6 +103,66 @@ pub struct Issue {
   pub file: Option<String>,
 }
 
+const CRITICAL_PENALTY: f64 = 15.0;
+const HIGH_PENALTY: f64 = 8.0;
+const MEDIUM_PENALTY: f64 = 3.0;
+const LOW_PENALTY: f64 = 1.0;
+
+/// Calculate penalty with diminishing returns using logarithmic scaling.
+/// First issues of each severity have full impact, additional issues have less.
+fn calculate_penalty_with_diminishing_returns(count: usize, base_penalty: f64) -> f64 {
+  if count == 0 {
+    return 0.0;
+  }
+  // Use log(1 + count) * base_penalty * scaling_factor
+  // This means: 1 issue = full penalty, 10 issues ≈ 2.4x penalty, 100 issues ≈ 4.6x penalty
+  let scaling_factor = 3.0;
+  (1.0 + count as f64).ln() * base_penalty * scaling_factor
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustScore {
+  pub score: f64,
+  pub critical_count: usize,
+  pub high_count: usize,
+  pub medium_count: usize,
+  pub low_count: usize,
+}
+
+impl TrustScore {
+  pub fn calculate(issues: &[Issue]) -> Self {
+    let critical_count = issues.iter().filter(|i| i.severity == Severity::Critical).count();
+    let high_count = issues.iter().filter(|i| i.severity == Severity::High).count();
+    let medium_count = issues.iter().filter(|i| i.severity == Severity::Medium).count();
+    let low_count = issues.iter().filter(|i| i.severity == Severity::Low).count();
+
+    let penalty = calculate_penalty_with_diminishing_returns(critical_count, CRITICAL_PENALTY)
+      + calculate_penalty_with_diminishing_returns(high_count, HIGH_PENALTY)
+      + calculate_penalty_with_diminishing_returns(medium_count, MEDIUM_PENALTY)
+      + calculate_penalty_with_diminishing_returns(low_count, LOW_PENALTY);
+
+    let score = (100.0 - penalty).max(0.0);
+
+    Self { score, critical_count, high_count, medium_count, low_count }
+  }
+
+  pub fn trust_level(&self) -> &'static str {
+    match self.score as u32 {
+      90..=100 => "High",
+      70..=89 => "Moderate",
+      50..=69 => "Low",
+      _ => "Very Low",
+    }
+  }
+}
+
+impl Default for TrustScore {
+  fn default() -> Self {
+    Self { score: 100.0, critical_count: 0, high_count: 0, medium_count: 0, low_count: 0 }
+  }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisResult {
   #[serde(rename = "file")]
@@ -114,6 +174,9 @@ pub struct AnalysisResult {
   pub issues: Vec<Issue>,
 
   #[serde(default)]
+  pub trust_score: TrustScore,
+
+  #[serde(default)]
   pub is_from_cache: bool,
 }
 
@@ -123,6 +186,7 @@ impl AnalysisResult {
       package_path: package_path.to_string(),
       package: None,
       issues: vec![],
+      trust_score: TrustScore::default(),
       is_from_cache: false,
     }
   }
@@ -132,6 +196,7 @@ impl AnalysisResult {
       package_path: package_path.to_string(),
       package: Some(package.to_string()),
       issues: vec![],
+      trust_score: TrustScore::default(),
       is_from_cache: false,
     }
   }
@@ -646,10 +711,13 @@ impl Analyzer {
     all_issues.extend(file_issues);
     all_issues.retain(|i| i.id.as_ref().map(|id| !ctx.ignore_issues.contains(id)).unwrap_or(true));
 
+    let trust_score = TrustScore::calculate(&all_issues);
+
     let result = AnalysisResult {
       package_path: normalize_path(&wi.pkg_path.to_string_lossy()),
       package: Some(wi.name.clone()),
       issues: all_issues,
+      trust_score,
       is_from_cache: false,
     };
 
@@ -892,7 +960,7 @@ mod analyzer_tests {
     assert!(is_test_file("foo.test.ts"));
     assert!(is_test_file("foo.test.mjs"));
     assert!(is_test_file("foo.test.cjs"));
-    assert!(is_test_file("Component.Test.JS")); 
+    assert!(is_test_file("Component.Test.JS"));
   }
 
   #[test]
@@ -944,8 +1012,150 @@ mod analyzer_tests {
     assert!(!is_test_file("main.ts"));
     assert!(!is_test_file("utils.mjs"));
     assert!(!is_test_file("helper.cjs"));
-    assert!(!is_test_file("contest.js")); 
+    assert!(!is_test_file("contest.js"));
     assert!(!is_test_file("fastest.js"));
-    assert!(!is_test_file("inspect.js")); 
+    assert!(!is_test_file("inspect.js"));
+  }
+
+  #[test]
+  fn test_trust_score_no_issues() {
+    let score = TrustScore::calculate(&[]);
+    assert_eq!(score.score, 100.0);
+    assert_eq!(score.trust_level(), "High");
+  }
+
+  #[test]
+  fn test_trust_score_low_issues() {
+    let issues = vec![
+      Issue {
+        issue_type: "test".to_string(),
+        line: 1,
+        message: "test".to_string(),
+        severity: Severity::Low,
+        code: None,
+        analyzer: None,
+        id: None,
+        file: None,
+      },
+      Issue {
+        issue_type: "test".to_string(),
+        line: 2,
+        message: "test".to_string(),
+        severity: Severity::Low,
+        code: None,
+        analyzer: None,
+        id: None,
+        file: None,
+      },
+    ];
+    let score = TrustScore::calculate(&issues);
+    assert!(score.score > 95.0 && score.score < 100.0);
+    assert_eq!(score.low_count, 2);
+    assert_eq!(score.trust_level(), "High");
+  }
+
+  #[test]
+  fn test_trust_score_critical_issues() {
+    let issues = vec![Issue {
+      issue_type: "test".to_string(),
+      line: 1,
+      message: "test".to_string(),
+      severity: Severity::Critical,
+      code: None,
+      analyzer: None,
+      id: None,
+      file: None,
+    }];
+    let score = TrustScore::calculate(&issues);
+    assert!(score.score > 60.0 && score.score < 75.0);
+    assert_eq!(score.critical_count, 1);
+    assert_eq!(score.trust_level(), "Low");
+  }
+
+  #[test]
+  fn test_trust_score_mixed_issues() {
+    let issues = vec![
+      Issue {
+        issue_type: "test".to_string(),
+        line: 1,
+        message: "test".to_string(),
+        severity: Severity::Critical,
+        code: None,
+        analyzer: None,
+        id: None,
+        file: None,
+      },
+      Issue {
+        issue_type: "test".to_string(),
+        line: 2,
+        message: "test".to_string(),
+        severity: Severity::High,
+        code: None,
+        analyzer: None,
+        id: None,
+        file: None,
+      },
+      Issue {
+        issue_type: "test".to_string(),
+        line: 3,
+        message: "test".to_string(),
+        severity: Severity::Medium,
+        code: None,
+        analyzer: None,
+        id: None,
+        file: None,
+      },
+    ];
+    let score = TrustScore::calculate(&issues);
+    assert_eq!(score.critical_count, 1);
+    assert_eq!(score.high_count, 1);
+    assert_eq!(score.medium_count, 1);
+    assert!(score.score > 30.0 && score.score < 60.0);
+    assert_eq!(score.trust_level(), "Very Low");
+  }
+
+  #[test]
+  fn test_trust_score_minimum_zero() {
+    let issues: Vec<Issue> = (0..50)
+      .map(|i| Issue {
+        issue_type: "test".to_string(),
+        line: i,
+        message: "test".to_string(),
+        severity: Severity::Critical,
+        code: None,
+        analyzer: None,
+        id: None,
+        file: None,
+      })
+      .collect();
+    let score = TrustScore::calculate(&issues);
+    assert_eq!(score.score, 0.0); // Should be capped at 0
+    assert_eq!(score.trust_level(), "Very Low");
+  }
+
+  #[test]
+  fn test_trust_score_many_low_issues_stays_reasonable() {
+    let issues: Vec<Issue> = (0..145)
+      .map(|i| Issue {
+        issue_type: "test".to_string(),
+        line: i,
+        message: "test".to_string(),
+        severity: Severity::Low,
+        code: None,
+        analyzer: None,
+        id: None,
+        file: None,
+      })
+      .collect();
+    let score = TrustScore::calculate(&issues);
+    // With logarithmic scaling, 145 low issues should give penalty of ln(146)*1*3 ≈ 15
+    // So score should be around 85, not 0
+    assert!(score.score > 80.0, "Score {} should be > 80 for 145 low issues", score.score);
+    // Moderate (70-89) is acceptable for many low issues
+    assert!(
+      score.trust_level() == "High" || score.trust_level() == "Moderate",
+      "Trust level should be High or Moderate, got {}",
+      score.trust_level()
+    );
   }
 }

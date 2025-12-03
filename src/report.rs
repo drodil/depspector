@@ -5,9 +5,18 @@ use std::str::FromStr;
 
 use colored::*;
 
-use crate::analyzers::{AnalysisResult, Severity};
+use crate::analyzers::{AnalysisResult, Severity, TrustScore};
 
 const MAX_LINE_LENGTH: usize = 120;
+
+fn trust_level_colored(score: f64) -> ColoredString {
+  match score as u32 {
+    90..=100 => "High".green(),
+    70..=89 => "Moderate".yellow(),
+    50..=69 => "Low".truecolor(255, 165, 0), // Orange
+    _ => "Very Low".red(),
+  }
+}
 
 fn truncate_line(s: &str, max_len: usize) -> String {
   let trimmed = s.trim();
@@ -19,7 +28,6 @@ fn truncate_line(s: &str, max_len: usize) -> String {
   }
 }
 
-/// Context for report generation
 pub struct ReportContext<'a> {
   pub report_level: &'a str,
   pub only_new: bool,
@@ -150,6 +158,7 @@ impl Reporter {
     println!("\n{}", "Security Analysis Report".bold().underline());
     println!();
 
+    // Group results by package
     let mut by_package: std::collections::HashMap<String, Vec<&AnalysisResult>> =
       std::collections::HashMap::new();
 
@@ -158,8 +167,24 @@ impl Reporter {
       by_package.entry(pkg).or_default().push(result);
     }
 
+    let mut trust_scores: Vec<(&str, &TrustScore)> = filtered
+      .iter()
+      .filter_map(|r| r.package.as_ref().map(|p| (p.as_str(), &r.trust_score)))
+      .collect();
+
+    trust_scores.sort_by(|a, b| a.1.score.partial_cmp(&b.1.score).unwrap());
+    trust_scores.dedup_by(|a, b| a.0 == b.0);
+
     for (package, results) in &by_package {
-      println!("{}", format!("📦 {}", package).cyan().bold());
+      let trust = results.first().map(|r| &r.trust_score);
+
+      let trust_display = if let Some(t) = trust {
+        format!(" [Trust: {:.0} - {}]", t.score, t.trust_level())
+      } else {
+        String::new()
+      };
+
+      println!("{}{}", format!("📦 {}", package).cyan().bold(), trust_display.dimmed());
 
       for result in results {
         for issue in &result.issues {
@@ -215,6 +240,34 @@ impl Reporter {
       critical.to_string().red(),
       high.to_string().yellow()
     );
+
+    if !trust_scores.is_empty() {
+      println!();
+      println!("{}", "⚠️  Most Untrusted Packages:".yellow().bold());
+
+      for (package, trust) in trust_scores.iter().take(3) {
+        let score_colored = if trust.score < 50.0 {
+          format!("{:.0}", trust.score).red()
+        } else if trust.score < 70.0 {
+          format!("{:.0}", trust.score).truecolor(255, 165, 0)
+        } else if trust.score < 90.0 {
+          format!("{:.0}", trust.score).yellow()
+        } else {
+          format!("{:.0}", trust.score).green()
+        };
+
+        println!(
+          "  {} - Trust Score: {} ({}) - {} critical, {} high, {} medium, {} low",
+          package.cyan(),
+          score_colored,
+          trust_level_colored(trust.score),
+          trust.critical_count.to_string().red(),
+          trust.high_count.to_string().yellow(),
+          trust.medium_count,
+          trust.low_count
+        );
+      }
+    }
   }
 
   pub fn has_issues_at_level(&self, results: &[AnalysisResult], level: &str) -> bool {
@@ -253,6 +306,7 @@ mod tests {
         file: None,
       }],
       is_from_cache: false,
+      trust_score: TrustScore::default(),
     }];
 
     assert!(reporter.has_issues_at_level(&results, "high"));
@@ -278,6 +332,7 @@ mod tests {
         id: None,
         file: None,
       }],
+      trust_score: TrustScore::default(),
       is_from_cache: false,
     }];
 
