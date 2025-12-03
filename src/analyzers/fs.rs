@@ -65,8 +65,6 @@ const DEFAULT_DANGEROUS_PATHS: &[&str] = &[
   "NTUSER.DAT",
 ];
 
-const WRITE_METHODS: &[&str] = &["writeFile", "writeFileSync", "appendFile", "appendFileSync"];
-
 pub struct FsAnalyzer;
 
 struct FsVisitor<'a> {
@@ -90,38 +88,15 @@ impl AstVisitor for FsVisitor<'_> {
     let line = call.line.max(1);
 
     if let (Some(ref callee), Some(ref object)) = (&call.callee_name, &call.object_name) {
-      if object == "fs" || object == "promises" {
-        // Check first argument for dangerous path (resolve variables if possible)
-        if !call.arguments.is_empty() {
-          if let Some(path) = self.variable_map.resolve_arg(&call.arguments[0]) {
-            if self.check_dangerous_path(&path) {
-              let message = format!("Suspicious file access detected: {}", path);
-
-              let id = generate_issue_id(
-                self.analyzer_name,
-                self.file_path,
-                line,
-                &message,
-                self.package_name,
-              );
-
-              self.issues.push(Issue {
-                issue_type: self.analyzer_name.to_string(),
-                line,
-                message,
-                severity: Severity::High,
-                code: Some(self.line_index.get_line(line)),
-                analyzer: Some(self.analyzer_name.to_string()),
-                id: Some(id),
-                file: None,
-              });
-            }
-          }
-        }
-
-        // Check for write operations
-        if WRITE_METHODS.contains(&callee.as_str()) {
-          let message = format!("File write operation detected ({})", callee);
+      if (object == "fs" || object == "promises") && !call.arguments.is_empty() {
+        if let Some(path) = self.variable_map.resolve_arg(&call.arguments[0]) {
+          let is_dangerous = self.check_dangerous_path(&path);
+          let severity = if is_dangerous { Severity::High } else { Severity::Low };
+          let message = if is_dangerous {
+            format!("Suspicious file access detected: {}", path)
+          } else {
+            format!("File system operation detected: {} on {}", callee, path)
+          };
 
           let id = generate_issue_id(
             self.analyzer_name,
@@ -135,31 +110,7 @@ impl AstVisitor for FsVisitor<'_> {
             issue_type: self.analyzer_name.to_string(),
             line,
             message,
-            severity: Severity::Medium,
-            code: Some(self.line_index.get_line(line)),
-            analyzer: Some(self.analyzer_name.to_string()),
-            id: Some(id),
-            file: None,
-          });
-        }
-
-        // Check for watch operations
-        if callee == "watch" {
-          let message = "File watch operation detected (fs.watch)".to_string();
-
-          let id = generate_issue_id(
-            self.analyzer_name,
-            self.file_path,
-            line,
-            &message,
-            self.package_name,
-          );
-
-          self.issues.push(Issue {
-            issue_type: self.analyzer_name.to_string(),
-            line,
-            message,
-            severity: Severity::Medium,
+            severity,
             code: Some(self.line_index.get_line(line)),
             analyzer: Some(self.analyzer_name.to_string()),
             id: Some(id),
@@ -283,7 +234,8 @@ mod tests {
     let issues = analyzer.analyze(&context);
 
     assert_eq!(issues.len(), 1);
-    assert!(issues[0].message.contains("write"));
+    assert_eq!(issues[0].severity, Severity::Low);
+    assert!(issues[0].message.contains("writeFileSync"));
   }
 
   #[test]
@@ -305,6 +257,7 @@ mod tests {
     let issues = analyzer.analyze(&context);
 
     assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].severity, Severity::Low);
     assert!(issues[0].message.contains("watch"));
   }
 
@@ -351,10 +304,10 @@ mod tests {
     };
     let issues = analyzer.analyze(&context);
 
-    // No dangerous path detected
-    let dangerous_issues: Vec<_> =
-      issues.iter().filter(|i| i.message.contains("Suspicious")).collect();
-    assert!(dangerous_issues.is_empty());
+    // Safe path should produce Low severity issue
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].severity, Severity::Low);
+    assert!(issues[0].message.contains("File system operation"));
   }
 
   #[test]

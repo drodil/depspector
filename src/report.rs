@@ -9,6 +9,15 @@ use crate::analyzers::{AnalysisResult, DependencyType, Severity, TrustScore};
 
 const MAX_LINE_LENGTH: usize = 120;
 
+fn make_path_relative(path: &str, cwd: &Path) -> String {
+  if let Ok(abs_path) = std::path::PathBuf::from(path).canonicalize() {
+    if let Ok(rel_path) = abs_path.strip_prefix(cwd) {
+      return rel_path.to_string_lossy().to_string();
+    }
+  }
+  path.to_string()
+}
+
 fn trust_level_colored(score: f64) -> ColoredString {
   match score as u32 {
     90..=100 => "High".green(),
@@ -24,6 +33,7 @@ fn dependency_type_display(dep_type: DependencyType) -> ColoredString {
     DependencyType::Dev => "dev".blue(),
     DependencyType::Optional => "optional".cyan(),
     DependencyType::Peer => "peer".magenta(),
+    DependencyType::Local => "local".bright_green(),
     DependencyType::Unknown => "unknown".dimmed(),
   }
 }
@@ -44,11 +54,19 @@ pub struct ReportContext<'a> {
   pub json_output: Option<&'a Path>,
   pub yaml_output: Option<&'a Path>,
   pub csv_output: Option<&'a Path>,
+  pub working_dir: &'a Path,
 }
 
 impl<'a> ReportContext<'a> {
-  pub fn new(report_level: &'a str, only_new: bool) -> Self {
-    Self { report_level, only_new, json_output: None, yaml_output: None, csv_output: None }
+  pub fn new(report_level: &'a str, only_new: bool, working_dir: &'a Path) -> Self {
+    Self {
+      report_level,
+      only_new,
+      json_output: None,
+      yaml_output: None,
+      csv_output: None,
+      working_dir,
+    }
   }
 
   pub fn with_json_output(mut self, path: Option<&'a Path>) -> Self {
@@ -96,7 +114,7 @@ impl Reporter {
       self.write_csv(&filtered, csv_path)?;
     }
 
-    self.print_console(&filtered, min_severity);
+    self.print_console(&filtered, min_severity, ctx);
 
     Ok(())
   }
@@ -159,7 +177,12 @@ impl Reporter {
     Ok(())
   }
 
-  fn print_console(&self, filtered: &[AnalysisResult], min_severity: Severity) {
+  fn print_console(
+    &self,
+    filtered: &[AnalysisResult],
+    min_severity: Severity,
+    ctx: &ReportContext,
+  ) {
     if filtered.is_empty() {
       println!("{}", "✓ No issues found".green().bold());
       return;
@@ -220,7 +243,8 @@ impl Reporter {
         };
 
         let file_path = issue.file.as_ref().unwrap_or(package_path);
-        let location = format!("{}:{}", file_path, issue.line);
+        let display_path = make_path_relative(file_path, ctx.working_dir);
+        let location = format!("{}:{}", display_path, issue.line);
         let location_display = if *is_from_cache {
           format!("  {} {}", "↺".dimmed(), location.dimmed())
         } else {
@@ -252,12 +276,18 @@ impl Reporter {
       filtered.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::Critical).count();
     let high =
       filtered.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::High).count();
+    let medium =
+      filtered.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::Medium).count();
+    let low =
+      filtered.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::Low).count();
 
     println!(
-      "Found {} issues ({} critical, {} high)",
+      "Found {} issues ({} critical, {} high, {} medium, {} low)",
       total_issues.to_string().bold(),
       critical.to_string().red(),
-      high.to_string().yellow()
+      high.to_string().yellow(),
+      medium,
+      low
     );
 
     if !trust_scores.is_empty() {

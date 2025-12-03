@@ -26,6 +26,12 @@ pub struct BenchmarkResults {
   pub ast_files_parsed: usize,
   /// Slowest files to parse (path, duration, size)
   pub slowest_ast_parses: Vec<(String, Duration, usize)>,
+  /// Time spent building dependency graph
+  pub graph_build_time: Duration,
+  /// Time spent discovering workspace packages
+  pub workspace_discovery_time: Duration,
+  /// Time spent discovering node_modules packages
+  pub node_modules_discovery_time: Duration,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -95,6 +101,21 @@ impl BenchmarkCollector {
     results.prefetch_time = duration;
   }
 
+  pub fn record_graph_build_time(&self, duration: Duration) {
+    let mut results = self.inner.lock().unwrap();
+    results.graph_build_time = duration;
+  }
+
+  pub fn record_workspace_discovery_time(&self, duration: Duration) {
+    let mut results = self.inner.lock().unwrap();
+    results.workspace_discovery_time = duration;
+  }
+
+  pub fn record_node_modules_discovery_time(&self, duration: Duration) {
+    let mut results = self.inner.lock().unwrap();
+    results.node_modules_discovery_time = duration;
+  }
+
   pub fn add_file_read_time(&self, duration: Duration) {
     let mut results = self.inner.lock().unwrap();
     results.file_read_time += duration;
@@ -138,6 +159,9 @@ impl BenchmarkCollector {
       ast_parse_time: results.ast_parse_time,
       ast_files_parsed: results.ast_files_parsed,
       slowest_ast_parses: results.slowest_ast_parses.clone(),
+      graph_build_time: results.graph_build_time,
+      workspace_discovery_time: results.workspace_discovery_time,
+      node_modules_discovery_time: results.node_modules_discovery_time,
     }
   }
 }
@@ -169,6 +193,17 @@ pub fn print_benchmark_report(results: &BenchmarkResults, total_duration: Durati
   };
 
   println!("\n{}", "Phase Timing (wall-clock)".bold().underline());
+  println!(
+    "  Graph Build:       {:>10.2?} ({:>5.1}%)",
+    results.graph_build_time,
+    percentage(results.graph_build_time, total_duration)
+  );
+  if results.workspace_discovery_time > Duration::ZERO {
+    println!("    Workspace:       {:>10.2?}", results.workspace_discovery_time);
+  }
+  if results.node_modules_discovery_time > Duration::ZERO {
+    println!("    Node modules:    {:>10.2?}", results.node_modules_discovery_time);
+  }
   println!(
     "  Discovery:         {:>10.2?} ({:>5.1}%)",
     results.discovery_time,

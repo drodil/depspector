@@ -814,6 +814,21 @@ Additionally, critical severity is assigned for:
 - Shell injection patterns (`|bash`, `|sh`)
 - `process.binding('spawn_sync')` calls
 
+**Configuration Options:**
+
+```json
+{
+  "analyzers": {
+    "process": {
+      "enabled": true,
+      "allowed_commands": ["git", "node", "npm"]
+    }
+  }
+}
+```
+
+- `allowed_commands`: Array of command names that are safe to execute and should not trigger issues. Commands are matched case-insensitively by their binary name (e.g., `/usr/bin/git` matches `"git"`).
+
 ## Supported Platforms
 
 Depspector provides pre-built native binaries for the following platforms:

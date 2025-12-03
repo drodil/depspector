@@ -102,6 +102,10 @@ pub struct Config {
   #[serde(default)]
   pub skip_transient: bool,
   #[serde(default)]
+  pub include_sources: bool,
+  #[serde(default)]
+  pub exclude_deps: bool,
+  #[serde(default)]
   pub npm: NpmConfig,
   #[serde(default)]
   pub analyzers: HashMap<String, AnalyzerConfig>,
@@ -144,6 +148,8 @@ impl Default for Config {
       include_optional_deps: false,
       include_peer_deps: true,
       skip_transient: false,
+      include_sources: false,
+      exclude_deps: false,
       npm: NpmConfig::default(),
       analyzers: HashMap::new(),
       max_file_size: default_max_file_size(),

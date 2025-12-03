@@ -67,7 +67,7 @@ pub enum Severity {
 }
 
 // Re-export dependency types from the dependencies module
-pub use crate::dependencies::{DependencyGraph, DependencyType};
+pub use crate::dependencies::{DependencyGraph, DependencyType, PackageInfo};
 
 impl Severity {
   pub fn as_str(&self) -> &'static str {
@@ -227,11 +227,12 @@ pub struct AnalyzeContext<'a> {
   pub offline: bool,
   pub prefetched: Option<Arc<PrefetchedData>>,
   pub benchmark: Option<BenchmarkCollector>,
-  pub dependency_graph: Option<DependencyGraph>,
+  pub dependency_graph: &'a DependencyGraph,
   pub ignored_ids: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl<'a> AnalyzeContext<'a> {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     node_modules_path: &'a Path,
     config: &'a Config,
@@ -240,6 +241,7 @@ impl<'a> AnalyzeContext<'a> {
     fail_fast: bool,
     concurrency: Option<usize>,
     offline: bool,
+    dependency_graph: &'a DependencyGraph,
   ) -> Self {
     let concurrency = concurrency
       .unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8));
@@ -254,7 +256,7 @@ impl<'a> AnalyzeContext<'a> {
       offline,
       prefetched: None,
       benchmark: None,
-      dependency_graph: None,
+      dependency_graph,
       ignored_ids: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
     }
   }
@@ -266,11 +268,6 @@ impl<'a> AnalyzeContext<'a> {
 
   pub fn with_benchmark(mut self, benchmark: Option<BenchmarkCollector>) -> Self {
     self.benchmark = benchmark;
-    self
-  }
-
-  pub fn with_dependency_graph(mut self, graph: Option<DependencyGraph>) -> Self {
-    self.dependency_graph = graph;
     self
   }
 }
@@ -521,19 +518,26 @@ impl Analyzer {
   }
 
   pub async fn analyze_package(&self, pkg_ctx: &PackageContext<'_>) -> Vec<Issue> {
-    self.analyze_package_with_benchmark(pkg_ctx, None).await
+    self.analyze_package_with_benchmark(pkg_ctx, None, false).await
   }
 
   pub async fn analyze_package_with_benchmark(
     &self,
     pkg_ctx: &PackageContext<'_>,
     benchmark: Option<&BenchmarkCollector>,
+    is_local: bool,
   ) -> Vec<Issue> {
     use futures::future::join_all;
 
     let futures: Vec<_> = self
       .package_analyzers
       .iter()
+      .filter(|analyzer| {
+        if is_local && analyzer.requires_network() {
+          return false;
+        }
+        true
+      })
       .map(|analyzer| {
         let name = analyzer.name();
         async move {
@@ -576,14 +580,17 @@ impl Analyzer {
   ) -> napi::Result<Vec<AnalysisResult>> {
     use futures::stream::{self, StreamExt};
 
-    let discovery_start = std::time::Instant::now();
-    let (cached_results, work_items) = self.discover_packages(ctx);
+    let packages = ctx.dependency_graph.discovered_packages();
+
     if let Some(ref b) = ctx.benchmark {
-      b.record_discovery_time(discovery_start.elapsed());
-      b.add_packages(work_items.len() + cached_results.len());
+      b.add_packages(packages.len());
     }
 
-    let mut results = cached_results;
+    let discovery_start = std::time::Instant::now();
+    let (mut results, work_items) = self.check_cache_for_packages(packages, ctx);
+    if let Some(ref b) = ctx.benchmark {
+      b.record_discovery_time(discovery_start.elapsed());
+    }
 
     let prefetch_start = std::time::Instant::now();
     let prefetched = self.prefetch_data(&work_items, ctx).await;
@@ -605,182 +612,59 @@ impl Analyzer {
     Ok(results)
   }
 
-  fn discover_packages(&self, ctx: &AnalyzeContext<'_>) -> (Vec<AnalysisResult>, Vec<WorkItem>) {
-    use std::fs;
-    use std::sync::Mutex;
-    use walkdir::WalkDir;
+  fn check_cache_for_packages(
+    &self,
+    packages: &[PackageInfo],
+    ctx: &AnalyzeContext<'_>,
+  ) -> (Vec<AnalysisResult>, Vec<WorkItem>) {
+    use rayon::prelude::*;
 
-    let cached_results = Mutex::new(Vec::<AnalysisResult>::new());
-    let work_items = Mutex::new(Vec::<WorkItem>::new());
+    let cached_results = std::sync::Mutex::new(Vec::<AnalysisResult>::new());
+    let work_items = std::sync::Mutex::new(Vec::<WorkItem>::new());
 
-    WalkDir::new(ctx.node_modules_path)
-      .follow_links(false)
-      .into_iter()
-      .par_bridge()
-      .filter_map(|entry| entry.ok())
-      .filter(|entry| {
-        if entry.file_type().is_symlink() {
-          return false;
-        }
-        if entry.file_type().is_dir() {
-          let dir_name = entry.file_name().to_string_lossy();
-          if is_excluded_dir(&dir_name, ctx.config) {
-            return false;
-          }
-        }
-        entry.file_name() == "package.json"
-      })
-      .for_each(|entry| {
-        let pkg_path = match entry.path().parent() {
-          Some(p) => p.to_path_buf(),
-          None => return,
-        };
-        if pkg_path.components().any(|c| {
-          let s = c.as_os_str().to_string_lossy();
-          s == "dist" || s == "build"
-        }) {
-          return;
-        }
-
-        {
-          let rel_segments: Vec<String> = pkg_path
-            .strip_prefix(ctx.node_modules_path)
-            .unwrap_or(&pkg_path)
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy().to_string())
-            .collect();
-          if rel_segments.iter().any(|s| is_excluded_dir(s, ctx.config)) {
-            return;
-          }
-        }
-        let package_json_content = match fs::read_to_string(entry.path()) {
-          Ok(c) => c,
-          Err(_) => return,
-        };
-        let package_json: serde_json::Value = match serde_json::from_str(&package_json_content) {
-          Ok(v) => v,
-          Err(_) => return,
-        };
-
-        let name =
-          package_json.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(
-            || {
-              let rel = pkg_path.strip_prefix(ctx.node_modules_path).unwrap_or(&pkg_path);
-              let segments: Vec<_> =
-                rel.components().map(|c| c.as_os_str().to_string_lossy()).collect();
-              if let Some(last) = segments.last() {
-                if last.starts_with('@') {
-                  if segments.len() >= 2 {
-                    let scope = &segments[segments.len() - 2];
-                    let name = &segments[segments.len() - 1];
-                    format!("{}/{}", scope, name)
-                  } else {
-                    last.to_string()
-                  }
-                } else if segments.len() >= 2 && segments[segments.len() - 2].starts_with('@') {
-                  let scope = &segments[segments.len() - 2];
-                  let name = &segments[segments.len() - 1];
-                  format!("{}/{}", scope, name)
-                } else if segments.len() >= 2 {
-                  let parent = &segments[segments.len() - 2];
-                  let name = &segments[segments.len() - 1];
-                  format!("@{}/{}", parent, name)
-                } else {
-                  last.to_string()
-                }
-              } else {
-                "unknown".to_string()
-              }
-            },
-          );
-        let version = package_json
-          .get("version")
-          .and_then(|v| v.as_str())
-          .or_else(|| {
-            package_json.get("_id").and_then(|v| v.as_str()).and_then(|id| {
-              let parts: Vec<&str> = id.rsplit('@').collect();
-              if parts.len() >= 2 {
-                Some(parts[0])
-              } else {
-                None
-              }
+    packages.par_iter().for_each(|pkg_info| {
+      if let Some(cache) = ctx.cache {
+        let max_age = ctx.config.cache_max_age_seconds;
+        if let Some(cached) = cache.get_if_fresh(&pkg_info.name, &pkg_info.version, max_age) {
+          let filtered_issues: Vec<_> = cached
+            .issues
+            .iter()
+            .filter(|issue| {
+              self.active_analyzers.iter().any(|a| a.eq_ignore_ascii_case(&issue.issue_type))
             })
-          })
-          .unwrap_or("0.0.0");
-        if ctx.config.exclude.iter().any(|e| name.contains(e)) {
-          return;
-        }
+            .cloned()
+            .collect();
 
-        if let Some(ref graph) = ctx.dependency_graph {
-          let dep_type = graph.get_type(&name);
-          if !ctx.config.include_dev_deps && dep_type == DependencyType::Dev {
-            log::debug!("Skipping dev dependency: {}", name);
+          let cached_analyzer_types: std::collections::HashSet<_> =
+            filtered_issues.iter().map(|i| i.issue_type.to_lowercase()).collect();
+
+          let missing_analyzers: Vec<_> = self
+            .active_analyzers
+            .iter()
+            .filter(|a| !cached_analyzer_types.contains(&a.to_lowercase()))
+            .collect();
+
+          if missing_analyzers.is_empty() {
+            let mut result = cached.clone();
+            result.issues = filtered_issues;
+            result.is_from_cache = true;
+            cached_results.lock().unwrap().push(result);
             return;
           }
-          if !ctx.config.include_optional_deps && dep_type == DependencyType::Optional {
-            log::debug!("Skipping optional dependency: {}", name);
-            return;
-          }
-          if !ctx.config.include_peer_deps && dep_type == DependencyType::Peer {
-            log::debug!("Skipping peer dependency: {}", name);
-            return;
-          }
         }
+      }
 
-        let dependency_type = ctx
-          .dependency_graph
-          .as_ref()
-          .map(|g| g.get_type(&name))
-          .unwrap_or(DependencyType::Unknown);
-
-        let is_transient =
-          ctx.dependency_graph.as_ref().map(|g| !g.is_direct(&name)).unwrap_or(false);
-
-        if ctx.config.skip_transient && is_transient {
-          log::debug!("Skipping transient dependency: {}", name);
-          return;
-        }
-
-        if let Some(cache) = ctx.cache {
-          let max_age = ctx.config.cache_max_age_seconds;
-          if let Some(cached) = cache.get_if_fresh(&name, version, max_age) {
-            let filtered_issues: Vec<_> = cached
-              .issues
-              .iter()
-              .filter(|issue| {
-                self.active_analyzers.iter().any(|a| a.eq_ignore_ascii_case(&issue.issue_type))
-              })
-              .cloned()
-              .collect();
-
-            let cached_analyzer_types: std::collections::HashSet<_> =
-              filtered_issues.iter().map(|i| i.issue_type.to_lowercase()).collect();
-
-            let missing_analyzers: Vec<_> = self
-              .active_analyzers
-              .iter()
-              .filter(|a| !cached_analyzer_types.contains(&a.to_lowercase()))
-              .collect();
-
-            if missing_analyzers.is_empty() {
-              let mut result = cached.clone();
-              result.issues = filtered_issues;
-              result.is_from_cache = true;
-              cached_results.lock().unwrap().push(result);
-              return;
-            }
-          }
-        }
-
-        work_items.lock().unwrap().push(WorkItem {
-          name: name.to_string(),
-          version: version.to_string(),
-          pkg_path,
-          package_json,
-          dependency_type,
-          is_transient,
-        });
+      work_items.lock().unwrap().push(WorkItem {
+        name: pkg_info.name.clone(),
+        version: pkg_info.version.clone(),
+        pkg_path: pkg_info.path.clone(),
+        package_json: pkg_info.package_json.clone(),
+        dependency_type: pkg_info.dependency_type,
+        is_transient: pkg_info.is_transient,
+        is_root: pkg_info.is_root,
+        is_local: pkg_info.is_local,
       });
+    });
 
     (cached_results.into_inner().unwrap(), work_items.into_inner().unwrap())
   }
@@ -809,6 +693,17 @@ impl Analyzer {
     prefetched: Option<Arc<PrefetchedData>>,
   ) -> AnalysisResult {
     let pkg_path_clone = wi.pkg_path.clone();
+    let is_root = wi.is_root;
+    let is_local = wi.is_local;
+
+    let workspace_paths: Vec<PathBuf> = ctx
+      .dependency_graph
+      .discovered_packages()
+      .iter()
+      .filter(|p| p.dependency_type == DependencyType::Local)
+      .map(|p| p.path.clone())
+      .collect();
+
     let pkg_ctx = PackageContext {
       name: &wi.name,
       version: &wi.version,
@@ -820,13 +715,15 @@ impl Analyzer {
 
     let benchmark = ctx.benchmark.as_ref();
     let (mut package_issues, js_entries) = tokio::join!(
-      self.analyze_package_with_benchmark(&pkg_ctx, benchmark),
-      Self::discover_js_files(&pkg_path_clone, ctx.config)
+      self.analyze_package_with_benchmark(&pkg_ctx, benchmark, is_local),
+      Self::discover_js_files(&pkg_path_clone, is_root, &workspace_paths, ctx.config)
     );
 
+    // Set absolute file path for package-level issues
     for issue in &mut package_issues {
       if issue.file.is_none() {
-        issue.file = Some("package.json".to_string());
+        let pkg_json_path = wi.pkg_path.join("package.json");
+        issue.file = Some(normalize_path(&pkg_json_path.to_string_lossy()));
       }
     }
 
@@ -873,25 +770,57 @@ impl Analyzer {
     result
   }
 
-  async fn discover_js_files(pkg_path: &Path, config: &Config) -> Vec<PathBuf> {
+  async fn discover_js_files(
+    pkg_path: &Path,
+    is_root: bool,
+    workspace_paths: &[PathBuf],
+    config: &Config,
+  ) -> Vec<PathBuf> {
     use walkdir::WalkDir;
 
     WalkDir::new(pkg_path)
       .follow_links(false)
       .into_iter()
+      .filter_entry(|e| {
+        if e.file_type().is_dir() {
+          let dir_path = e.path();
+
+          if is_root {
+            for ws_path in workspace_paths {
+              if ws_path != pkg_path && dir_path == *ws_path {
+                return false;
+              }
+            }
+          }
+
+          if let Some(dir_name) = e.file_name().to_str() {
+            if is_root && dir_name == "node_modules" {
+              return false;
+            }
+
+            if matches!(
+              dir_name,
+              ".bin"
+                | "test"
+                | "tests"
+                | "__tests__"
+                | "e2e-test"
+                | "example"
+                | "examples"
+                | "dist"
+                | "build"
+                | ".yarn"
+            ) || config.exclude.iter().any(|e| e == dir_name)
+            {
+              return false;
+            }
+          }
+        }
+        true
+      })
       .filter_map(|e| e.ok())
       .filter(|e| {
         if e.file_type().is_symlink() {
-          return false;
-        }
-        let rel_segments: Vec<String> = e
-          .path()
-          .strip_prefix(pkg_path)
-          .unwrap_or(e.path())
-          .components()
-          .map(|c| c.as_os_str().to_string_lossy().to_string())
-          .collect();
-        if rel_segments.iter().any(|s| is_excluded_dir(s, config)) {
           return false;
         }
 
@@ -905,7 +834,6 @@ impl Analyzer {
         if fname.ends_with(".d.ts") {
           return false;
         }
-        // Skip test files unless include_tests is enabled
         if !config.include_tests && is_test_file(&fname) {
           return false;
         }
@@ -992,13 +920,8 @@ struct WorkItem {
   package_json: serde_json::Value,
   dependency_type: DependencyType,
   is_transient: bool,
-}
-
-fn is_excluded_dir(segment: &str, config: &Config) -> bool {
-  matches!(
-    segment,
-    ".bin" | "test" | "tests" | "__tests__" | "example" | "examples" | "dist" | "build"
-  ) || config.exclude.iter().any(|e| e == segment)
+  is_root: bool,
+  is_local: bool,
 }
 
 fn is_test_file(filename: &str) -> bool {

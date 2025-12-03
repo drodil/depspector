@@ -27,6 +27,7 @@ use crate::config::Config;
 use crate::dependencies::DependencyGraph;
 use crate::error::format_cli_error;
 use crate::report::{ReportContext, Reporter};
+use crate::util::normalize_path;
 
 #[allow(dead_code)]
 #[napi]
@@ -79,9 +80,15 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   if cli.skip_transient {
     config.skip_transient = true;
   }
+  if cli.include_sources {
+    config.include_sources = true;
+  }
+  if cli.exclude_deps {
+    config.exclude_deps = true;
+  }
 
   let node_modules_path = working_dir.join(&cli.path);
-  if !node_modules_path.exists() {
+  if !config.exclude_deps && !node_modules_path.exists() {
     return Err(NapiError::from_reason(format!(
       "node_modules not found at {}",
       node_modules_path.display()
@@ -111,20 +118,38 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   }
 
   let spinner = if !cli.verbose.is_present() && !cli.benchmark {
-    Some(Spinner::new(spinners::Dots, "Analyzing packages...", Color::Cyan))
+    let normalized_dir = normalize_path(&working_dir.to_string_lossy());
+    Some(Spinner::new(
+      spinners::Dots,
+      format!("Analyzing packages in {}...", normalized_dir),
+      Color::Cyan,
+    ))
   } else {
-    info!("Starting analysis of {}", node_modules_path.display());
+    let normalized_dir = normalize_path(&working_dir.to_string_lossy());
+    info!("Starting analysis of {}", normalized_dir);
     None
   };
 
   let benchmark_collector = if cli.benchmark { Some(BenchmarkCollector::new()) } else { None };
 
-  let dependency_graph = DependencyGraph::build(&working_dir, &node_modules_path);
+  let dependency_graph = DependencyGraph::build(
+    &working_dir,
+    &node_modules_path,
+    config.include_sources,
+    config.exclude_deps,
+    &config.exclude,
+    config.include_dev_deps,
+    config.include_optional_deps,
+    config.include_peer_deps,
+    config.skip_transient,
+    benchmark_collector.as_ref(),
+  );
   if dependency_graph.total_count() > 0 {
     debug!("Built dependency graph with {} packages", dependency_graph.total_count());
   } else {
     debug!("No packages found in dependency graph");
   }
+  debug!("Discovered {} packages to analyze", dependency_graph.discovered_packages().len());
 
   let start_time = std::time::Instant::now();
   let analyze_ctx = AnalyzeContext::new(
@@ -135,10 +160,14 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     cli.fail_fast,
     cli.concurrency,
     cli.offline,
+    &dependency_graph,
   )
-  .with_benchmark(benchmark_collector.clone())
-  .with_dependency_graph(Some(dependency_graph));
-  let results = analyzer.analyze_packages(&analyze_ctx).await?;
+  .with_benchmark(benchmark_collector.clone());
+
+  let mut results = Vec::new();
+
+  let mut analyzed_results = analyzer.analyze_packages(&analyze_ctx).await?;
+  results.append(&mut analyzed_results);
 
   let duration = start_time.elapsed();
   if let Some(mut s) = spinner {
@@ -146,7 +175,7 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   }
 
   let report_level = cli.report_level.as_deref().unwrap_or(config.report_level.as_str());
-  let report_ctx = ReportContext::new(report_level, cli.only_new)
+  let report_ctx = ReportContext::new(report_level, cli.only_new, &working_dir)
     .with_json_output(cli.json.as_deref())
     .with_yaml_output(cli.yaml.as_deref())
     .with_csv_output(cli.csv.as_deref());
@@ -239,6 +268,13 @@ struct Cli {
     help = "Skip transient dependencies (only scan direct and dev deps from root package.json)"
   )]
   skip_transient: bool,
+  #[clap(
+    long,
+    help = "Include local source files in analysis (scans project directory excluding node_modules)"
+  )]
+  include_sources: bool,
+  #[clap(long, help = "Exclude dependencies from analysis (skip node_modules scanning)")]
+  exclude_deps: bool,
 }
 
 #[cfg(test)]

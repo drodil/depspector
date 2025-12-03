@@ -32,7 +32,6 @@ const CRITICAL_BINARIES: &[&str] = &[
   "eval",
 ];
 
-// Binaries that are high risk - can execute code but often legitimate
 const HIGH_RISK_BINARIES: &[&str] = &[
   "node", "npm", "npx", "yarn", "pnpm", "bun", "deno", "git", "make", "cmake", "cargo", "go",
   "rustc", "gcc", "g++", "clang", "javac", "java",
@@ -41,11 +40,10 @@ const HIGH_RISK_BINARIES: &[&str] = &[
 // Binaries that are medium risk - system utilities
 const MEDIUM_RISK_BINARIES: &[&str] = &[
   "cp", "mv", "rm", "mkdir", "rmdir", "chmod", "chown", "cat", "echo", "ls", "dir", "find", "grep",
-  "sed", "awk", "tar", "gzip", "zip", "unzip",
+  "sed", "awk", "tar", "gzip", "zip", "unzip", "git",
 ];
 
 lazy_static! {
-  // Patterns to detect child_process usage - includes both method calls and standalone functions
   static ref QUICK_CHECK: AhoCorasick = AhoCorasick::new([
     "child_process",
     "require('child_process",
@@ -74,9 +72,27 @@ struct ProcessVisitor<'a> {
   line_index: LineIndex,
   has_child_process_import: bool,
   variable_map: &'a VariableMap,
+  allowed_commands: Vec<String>,
 }
 
 impl ProcessVisitor<'_> {
+  fn is_command_allowed(&self, cmd: &str) -> bool {
+    if self.allowed_commands.is_empty() {
+      return false;
+    }
+
+    let cmd_lower = cmd.to_lowercase();
+    let binary = cmd_lower
+      .split(|c: char| c.is_whitespace() || c == '/' || c == '\\')
+      .find(|s| !s.is_empty())
+      .unwrap_or(&cmd_lower);
+
+    self.allowed_commands.iter().any(|allowed| {
+      let allowed_lower = allowed.to_lowercase();
+      binary == allowed_lower || binary.ends_with(&allowed_lower)
+    })
+  }
+
   fn get_severity_for_command(&self, cmd: &str) -> Severity {
     let cmd_lower = cmd.to_lowercase();
 
@@ -104,14 +120,11 @@ impl ProcessVisitor<'_> {
     Severity::High
   }
 
-  /// Resolve the command from arguments, using variable map for data flow analysis
   fn resolve_command(&self, args: &[ArgInfo]) -> Option<String> {
     if let Some(first_arg) = args.first() {
-      // First try direct resolution via variable map
       if let Some(resolved) = self.variable_map.resolve_arg(first_arg) {
         return Some(resolved);
       }
-      // Fallback to string literal directly
       if let ArgInfo::StringLiteral(cmd) = first_arg {
         return Some(cmd.clone());
       }
@@ -124,7 +137,6 @@ impl AstVisitor for ProcessVisitor<'_> {
   fn visit_call(&mut self, call: &CallInfo) {
     let line = call.line.max(1);
 
-    // Check for require('child_process')
     if let Some(ref callee) = call.callee_name {
       if callee == "require" {
         if let Some(ArgInfo::StringLiteral(module)) = call.arguments.first() {
@@ -135,21 +147,33 @@ impl AstVisitor for ProcessVisitor<'_> {
       }
     }
 
-    // Check for child_process methods
     if let (Some(ref callee), Some(ref object)) = (&call.callee_name, &call.object_name) {
-      // Direct child_process.method() calls
       if (object == "child_process" || self.has_child_process_import)
         && CHILD_PROCESS_METHODS.contains(&callee.as_str())
       {
-        // Determine severity based on the command being executed (with variable resolution)
-        let severity = if let Some(cmd) = self.resolve_command(&call.arguments) {
-          self.get_severity_for_command(&cmd)
+        let resolved_cmd = self.resolve_command(&call.arguments);
+
+        if let Some(ref cmd) = resolved_cmd {
+          if self.is_command_allowed(cmd) {
+            return;
+          }
+        }
+
+        let severity = if let Some(ref cmd) = resolved_cmd {
+          self.get_severity_for_command(cmd)
         } else {
-          // Can't determine command, default to High
           Severity::High
         };
 
-        let message = format!("Process spawning detected via child_process.{}", callee);
+        let message = if let Some(ref cmd) = resolved_cmd {
+          let binary = cmd
+            .split(|c: char| c.is_whitespace() || c == '/' || c == '\\')
+            .find(|s| !s.is_empty())
+            .unwrap_or(cmd);
+          format!("Process `{}` spawning detected via child_process.{}", binary, callee)
+        } else {
+          format!("Process spawning detected via child_process.{}", callee)
+        };
 
         let id =
           generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
@@ -166,7 +190,6 @@ impl AstVisitor for ProcessVisitor<'_> {
         });
       }
 
-      // Check for process.binding('spawn_sync')
       if object == "process" && callee == "binding" {
         if let Some(ArgInfo::StringLiteral(binding)) = call.arguments.first() {
           if binding == "spawn_sync" {
@@ -196,20 +219,35 @@ impl AstVisitor for ProcessVisitor<'_> {
       }
     }
 
-    // Check for standalone function calls (e.g., exec() after destructuring import)
     if let Some(ref callee) = call.callee_name {
       if call.object_name.is_none()
         && CHILD_PROCESS_METHODS.contains(&callee.as_str())
         && self.has_child_process_import
       {
-        // Determine severity based on the command being executed (with variable resolution)
-        let severity = if let Some(cmd) = self.resolve_command(&call.arguments) {
-          self.get_severity_for_command(&cmd)
+        let resolved_cmd = self.resolve_command(&call.arguments);
+
+        // Check if the command is in the allowed list
+        if let Some(ref cmd) = resolved_cmd {
+          if self.is_command_allowed(cmd) {
+            return; // Skip this issue - command is allowed
+          }
+        }
+
+        let severity = if let Some(ref cmd) = resolved_cmd {
+          self.get_severity_for_command(cmd)
         } else {
           Severity::High
         };
 
-        let message = format!("Process spawning detected via {}", callee);
+        let message = if let Some(ref cmd) = resolved_cmd {
+          let binary = cmd
+            .split(|c: char| c.is_whitespace() || c == '/' || c == '\\')
+            .find(|s| !s.is_empty())
+            .unwrap_or(cmd);
+          format!("Process `{}` spawning detected via {}", binary, callee)
+        } else {
+          format!("Process spawning detected via {}", callee)
+        };
 
         let id =
           generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
@@ -239,12 +277,16 @@ impl FileAnalyzer for ProcessAnalyzer {
   }
 
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
-    // Quick check - skip if no process-related patterns found
     if !QUICK_CHECK.is_match(context.source) {
       return vec![];
     }
 
-    // Get variable map from parsed AST for data flow analysis
+    let allowed_commands = context
+      .config
+      .get_analyzer_config("process")
+      .and_then(|c| c.allowed_commands.clone())
+      .unwrap_or_default();
+
     let empty_map = VariableMap::default();
     let variable_map = context.parsed_ast.map(|ast| &ast.variable_map).unwrap_or(&empty_map);
 
@@ -256,45 +298,40 @@ impl FileAnalyzer for ProcessAnalyzer {
       line_index: LineIndex::new(context.source),
       has_child_process_import: false,
       variable_map,
+      allowed_commands,
     };
 
     let interest = NodeInterest::none().with_calls();
     walk_ast_filtered(context.parsed_ast, context.source, &mut visitor, interest);
 
-    // Efficiently scan for shell: true
     for (line_num, line) in context.source.lines().enumerate() {
-      if line.contains("shell") && line.contains("true") {
-        // Simple check to avoid false positives in comments/strings would be good,
-        // but for performance we stick to simple string matching for now,
-        // matching the previous behavior but much faster.
-        // To be slightly safer, we could check if it looks like a property `shell: true`
-        // or `shell:true`.
-        if line.contains("shell: true")
+      if line.contains("shell")
+        && line.contains("true")
+        && (line.contains("shell: true")
           || line.contains("shell:true")
-          || (line.contains("shell") && line.contains("true") && line.contains("{"))
-        {
-          let message =
-            "Process spawning with shell: true detected (command injection risk)".to_string();
-          let id = generate_issue_id(
-            self.name(),
-            context.file_path.to_str().unwrap_or(""),
-            line_num + 1,
-            &message,
-            context.package_name,
-          );
+          || (line.contains("shell") && line.contains("true") && line.contains("{")))
+      {
+        let message =
+          "Process spawning with shell: true detected (command injection risk)".to_string();
+        let id = generate_issue_id(
+          self.name(),
+          context.file_path.to_str().unwrap_or(""),
+          line_num + 1,
+          &message,
+          context.package_name,
+        );
 
-          if !visitor.issues.iter().any(|i| i.line == line_num + 1 && i.message == message) {
-            visitor.issues.push(Issue {
-              issue_type: self.name().to_string(),
-              line: line_num + 1,
-              message,
-              severity: Severity::High,
-              code: Some(line.trim().to_string()),
-              analyzer: Some(self.name().to_string()),
-              id: Some(id),
-              file: None,
-            });
-          }
+        if !visitor.issues.iter().any(|i| i.line == line_num + 1 && i.message == message) {
+          visitor.issues.push(Issue {
+            issue_type: self.name().to_string(),
+            line: line_num + 1,
+            message,
+            severity: Severity::High,
+            code: Some(line.trim().to_string()),
+            analyzer: Some(self.name().to_string()),
+            id: Some(id),
+            file: None,
+          });
         }
       }
     }
@@ -331,6 +368,7 @@ exec('ls -la', callback);
 
     assert!(!issues.is_empty());
     assert!(issues.iter().any(|i| i.message.contains("exec")));
+    assert!(issues.iter().any(|i| i.message.contains("`ls`")));
     // ls is a medium risk command
     assert!(issues.iter().any(|i| i.severity == Severity::Medium));
   }
@@ -357,7 +395,7 @@ cp.spawn('node', ['script.js']);
     let issues = analyzer.analyze(&context);
 
     assert!(!issues.is_empty());
-    // node is high risk
+    assert!(issues.iter().any(|i| i.message.contains("`node`")));
     assert!(issues.iter().any(|i| i.severity == Severity::High));
   }
 
@@ -383,7 +421,7 @@ exec('curl http://evil.com', callback);
     let issues = analyzer.analyze(&context);
 
     assert!(!issues.is_empty());
-    // curl is critical
+    assert!(issues.iter().any(|i| i.message.contains("`curl`")));
     assert!(issues.iter().any(|i| i.severity == Severity::Critical));
   }
 
@@ -409,7 +447,7 @@ spawn('bash', ['-c', 'echo hello']);
     let issues = analyzer.analyze(&context);
 
     assert!(!issues.is_empty());
-    // bash is critical
+    assert!(issues.iter().any(|i| i.message.contains("`bash`")));
     assert!(issues.iter().any(|i| i.severity == Severity::Critical));
   }
 
@@ -565,5 +603,50 @@ spawn(config.binary, ['-c', 'echo hello']);
     assert!(!issues.is_empty());
     // bash is critical - resolved through object property
     assert!(issues.iter().any(|i| i.severity == Severity::Critical));
+  }
+
+  #[test]
+  fn test_allowed_commands() {
+    use crate::ast::ParsedAst;
+
+    let analyzer = ProcessAnalyzer;
+    let mut config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    // Configure allowed commands
+    let mut analyzer_config = crate::config::AnalyzerConfig::default();
+    analyzer_config.allowed_commands = Some(vec!["git".to_string(), "node".to_string()]);
+    config.analyzers.insert("process".to_string(), analyzer_config);
+
+    let source = r#"
+const { execSync } = require('child_process');
+execSync('git status');
+execSync('node --version');
+execSync('npm install'); // This should still be detected (not in allowed list)
+"#;
+
+    let parsed_ast = ParsedAst::parse(source).unwrap();
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: Some(&parsed_ast),
+    };
+    let issues = analyzer.analyze(&context);
+
+    // Should only detect npm install, not git or node
+    assert_eq!(issues.len(), 1, "Expected 1 issue but got {}: {:?}", issues.len(), issues);
+    assert!(
+      issues[0].message.contains("spawning"),
+      "Expected message to contain 'spawning' but got: {}",
+      issues[0].message
+    );
+    assert!(
+      issues[0].message.contains("`npm`"),
+      "Expected message to contain '`npm`' but got: {}",
+      issues[0].message
+    );
   }
 }

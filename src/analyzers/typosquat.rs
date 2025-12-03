@@ -57,7 +57,6 @@ const POPULAR_PACKAGES: &[&str] = &[
   "electron",
 ];
 
-/// Analyzer for detecting typosquatting attacks
 pub struct TyposquatAnalyzer;
 
 #[async_trait]

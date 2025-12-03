@@ -5,9 +5,10 @@ use regex::Regex;
 use std::net::Ipv4Addr;
 
 lazy_static! {
-    static ref IPV4_REGEX: Regex = Regex::new(
-        r#"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"#
-    ).unwrap();
+  static ref IPV4_REGEX: Regex = Regex::new(
+    r#"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"#
+  )
+  .unwrap();
 }
 
 pub struct IpAnalyzer;
@@ -17,52 +18,49 @@ impl FileAnalyzer for IpAnalyzer {
     "ip"
   }
 
+  fn uses_ast(&self) -> bool {
+    true
+  }
+
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
     let mut issues = vec![];
+
+    let Some(ast) = context.parsed_ast else {
+      return issues;
+    };
 
     let config = context.config.get_analyzer_config(self.name());
     let allowed_ips = config.and_then(|c| c.allowed_ips.clone()).unwrap_or_default();
 
-    for mat in IPV4_REGEX.find_iter(context.source) {
-      let ip_str = mat.as_str();
+    let file_path = context.file_path.to_str().unwrap_or("");
+
+    for string_lit in &ast.string_literals {
+      let ip_str = &string_lit.value;
 
       if allowed_ips.iter().any(|allowed| allowed == ip_str) {
         continue;
       }
 
-      if let Ok(ip) = ip_str.parse::<Ipv4Addr>() {
-        if is_public_ip(ip) {
-          let start = mat.start();
-          let source_bytes = context.source.as_bytes();
+      if IPV4_REGEX.is_match(ip_str) {
+        if let Ok(ip) = ip_str.parse::<Ipv4Addr>() {
+          if is_public_ip(ip) {
+            let line = string_lit.line.max(1);
+            let message = format!("Hardcoded public IP address found: {}", ip_str);
 
-          if start > 0 {
-            let prev_char = source_bytes[start - 1] as char;
-            if prev_char == 'v' || prev_char == 'V' {
-              continue;
-            }
+            let id =
+              generate_issue_id(self.name(), file_path, line, &message, context.package_name);
+
+            issues.push(Issue {
+              issue_type: self.name().to_string(),
+              line,
+              message,
+              severity: Severity::Medium,
+              code: Some(ip_str.to_string()),
+              analyzer: Some(self.name().to_string()),
+              id: Some(id),
+              file: None,
+            });
           }
-
-          let line_num = context.source[..start].lines().count();
-          let message = format!("Hardcoded public IP address found: {}", ip_str);
-
-          let id = generate_issue_id(
-            self.name(),
-            context.file_path.to_str().unwrap_or(""),
-            line_num,
-            &message,
-            context.package_name,
-          );
-
-          issues.push(Issue {
-            issue_type: self.name().to_string(),
-            line: line_num,
-            message,
-            severity: Severity::Medium,
-            code: Some(ip_str.to_string()),
-            analyzer: Some(self.name().to_string()),
-            id: Some(id),
-            file: None,
-          });
         }
       }
     }
@@ -116,13 +114,14 @@ mod tests {
     let file_path = PathBuf::from("test.js");
     let source = "const ip = '8.8.8.8';";
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-pkg"),
       package_version: None,
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
 
     let issues = analyzer.analyze(&context);
@@ -137,13 +136,14 @@ mod tests {
     let file_path = PathBuf::from("test.js");
     let source = "const ip = '192.168.1.1';";
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-pkg"),
       package_version: None,
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
 
     let issues = analyzer.analyze(&context);
@@ -157,13 +157,14 @@ mod tests {
     let file_path = PathBuf::from("test.js");
     let source = "const ip = '127.0.0.1';";
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-pkg"),
       package_version: None,
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
 
     let issues = analyzer.analyze(&context);
@@ -182,16 +183,43 @@ mod tests {
     let file_path = PathBuf::from("test.js");
     let source = "const ip = '8.8.8.8';";
 
+    let ast = crate::ast::ParsedAst::parse(source);
     let context = FileContext {
       source,
       file_path: &file_path,
       package_name: Some("test-pkg"),
       package_version: None,
       config: &config,
-      parsed_ast: None,
+      parsed_ast: ast.as_ref(),
     };
 
     let issues = analyzer.analyze(&context);
+    assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_ignores_ip_in_comments() {
+    let analyzer = IpAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+    let source = r#"
+      // This IP is public: 8.8.8.8
+      /* Another comment with 1.2.3.4 */
+      const valid = '192.168.1.1';
+    "#;
+
+    let ast = crate::ast::ParsedAst::parse(source);
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-pkg"),
+      package_version: None,
+      config: &config,
+      parsed_ast: ast.as_ref(),
+    };
+
+    let issues = analyzer.analyze(&context);
+    // Should not detect IPs in comments, only private IP in string
     assert!(issues.is_empty());
   }
 }

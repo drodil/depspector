@@ -19,10 +19,31 @@ impl FileAnalyzer for ObfuscationAnalyzer {
 
     for (line_num, line) in context.source.lines().enumerate() {
       if let Some(long_string) = find_long_string(line, min_string_length) {
-        let message = format!(
-          "Suspiciously long string detected ({} chars, potential obfuscation)",
-          long_string.len()
-        );
+        let is_data_uri = long_string.starts_with("data:");
+        let is_safe_asset = is_safe_data_uri(long_string);
+
+        let message = if is_data_uri {
+          format!(
+            "Data URI detected ({} chars{})",
+            long_string.len(),
+            if is_safe_asset { ", appears to be asset data" } else { ", could contain code" }
+          )
+        } else {
+          format!(
+            "Suspiciously long string detected ({} chars, potential obfuscation)",
+            long_string.len()
+          )
+        };
+
+        let severity = if is_safe_asset {
+          Severity::Low
+        } else if is_data_uri {
+          Severity::Medium
+        } else if long_string.len() > 10000 {
+          Severity::High
+        } else {
+          Severity::Low
+        };
 
         let id = generate_issue_id(
           self.name(),
@@ -43,7 +64,7 @@ impl FileAnalyzer for ObfuscationAnalyzer {
           issue_type: self.name().to_string(),
           line: line_num + 1,
           message,
-          severity: if long_string.len() > 10000 { Severity::High } else { Severity::Low },
+          severity,
           code: Some(preview),
           analyzer: Some(self.name().to_string()),
           id: Some(id),
@@ -103,6 +124,24 @@ fn find_long_string(line: &str, min_length: usize) -> Option<&str> {
   }
 
   None
+}
+
+fn is_safe_data_uri(content: &str) -> bool {
+  if !content.starts_with("data:") {
+    return false;
+  }
+
+  // Common safe MIME types for assets
+  const SAFE_MIME_PREFIXES: &[&str] = &[
+    "data:image/",           // Images: jpeg, png, gif, svg+xml, webp
+    "data:font/",            // Fonts: woff, woff2, ttf, otf
+    "data:audio/",           // Audio files
+    "data:video/",           // Video files
+    "data:application/pdf",  // PDFs
+    "data:application/font", // Alternative font prefix
+  ];
+
+  SAFE_MIME_PREFIXES.iter().any(|prefix| content.starts_with(prefix))
 }
 
 fn contains_number_array(line: &str, min_count: usize) -> bool {
@@ -261,5 +300,104 @@ mod tests {
 
     assert!(!issues.is_empty());
     assert!(issues.iter().any(|i| i.message.contains("array of numbers")));
+  }
+
+  #[test]
+  fn test_ignores_image_data_uri() {
+    let analyzer = ObfuscationAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let base64_data = "a".repeat(300);
+    let source = format!(r#"const img = "data:image/jpeg;base64,{}";"#, base64_data);
+
+    let context = FileContext {
+      source: &source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should report image data URIs");
+    assert_eq!(issues[0].severity, Severity::Low, "Image data URIs should have low severity");
+    assert!(issues[0].message.contains("appears to be asset data"));
+  }
+
+  #[test]
+  fn test_ignores_font_data_uri() {
+    let analyzer = ObfuscationAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let base64_data = "b".repeat(300);
+    let source = format!(r#"const font = "data:font/woff2;base64,{}";"#, base64_data);
+
+    let context = FileContext {
+      source: &source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should report font data URIs");
+    assert_eq!(issues[0].severity, Severity::Low, "Font data URIs should have low severity");
+  }
+
+  #[test]
+  fn test_detects_suspicious_data_uri() {
+    let analyzer = ObfuscationAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let base64_data = "c".repeat(300);
+    // JavaScript data URI - this could be dangerous
+    let source = format!(r#"const script = "data:text/javascript;base64,{}";"#, base64_data);
+
+    let context = FileContext {
+      source: &source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should flag suspicious JavaScript data URIs");
+    assert_eq!(
+      issues[0].severity,
+      Severity::Medium,
+      "Non-safe data URIs should have medium severity"
+    );
+    assert!(issues[0].message.contains("could contain code"));
+  }
+
+  #[test]
+  fn test_detects_html_data_uri() {
+    let analyzer = ObfuscationAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let html_data = "<script>alert('xss')</script>".repeat(10);
+    let source = format!(r#"const html = "data:text/html,{}";"#, html_data);
+
+    let context = FileContext {
+      source: &source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert_eq!(issues.len(), 1, "Should flag HTML data URIs which can contain scripts");
+    assert_eq!(issues[0].severity, Severity::Medium, "HTML data URIs should have medium severity");
   }
 }

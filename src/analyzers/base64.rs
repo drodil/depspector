@@ -39,14 +39,12 @@ impl FileAnalyzer for Base64Analyzer {
           current_start = idx;
           in_potential_base64 = true;
         }
-      } else {
-        if in_potential_base64 {
-          let len = idx - current_start;
-          if len >= min_length {
-            report_issue(&mut issues, context, current_start, len, self.name());
-          }
-          in_potential_base64 = false;
+      } else if in_potential_base64 {
+        let len = idx - current_start;
+        if len >= min_length {
+          report_issue(&mut issues, context, current_start, len, self.name());
         }
+        in_potential_base64 = false;
       }
       i += 1;
     }
