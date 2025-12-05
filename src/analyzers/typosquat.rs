@@ -72,14 +72,20 @@ impl PackageAnalyzer for TyposquatAnalyzer {
     let additional_packages: Vec<String> =
       config.and_then(|c| c.popular_packages.clone()).unwrap_or_default();
 
+    let package_json_str = serde_json::to_string(&context.package_json).unwrap_or_default();
+
     if !pkg_name.is_ascii() {
       let message =
         "Package name contains non-ASCII characters (potential homoglyph attack)".to_string();
 
-      issues.push(
-        Issue::new(self.name(), message, Severity::High, "package.json")
-          .with_package_name(pkg_name),
-      );
+      let line = crate::util::find_line_in_json(&package_json_str, "name").unwrap_or(0);
+
+      let mut issue = Issue::new(self.name(), message, Severity::High, "package.json")
+        .with_package_name(pkg_name);
+      if line > 0 {
+        issue = issue.with_line(line);
+      }
+      issues.push(issue);
     }
 
     let mut packages_to_check: Vec<&str> = POPULAR_PACKAGES.to_vec();
@@ -102,10 +108,14 @@ impl PackageAnalyzer for TyposquatAnalyzer {
           pkg_name, popular, distance
         );
 
-        issues.push(
-          Issue::new(self.name(), message, Severity::High, "package.json")
-            .with_package_name(pkg_name),
-        );
+        let line = crate::util::find_line_in_json(&package_json_str, "name").unwrap_or(0);
+
+        let mut issue = Issue::new(self.name(), message, Severity::High, "package.json")
+          .with_package_name(pkg_name);
+        if line > 0 {
+          issue = issue.with_line(line);
+        }
+        issues.push(issue);
       }
     }
 

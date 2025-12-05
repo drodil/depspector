@@ -67,14 +67,22 @@ impl PackageAnalyzer for DormantAnalyzer {
       let days_since_previous = (current_date - *prev_date).num_days();
 
       if days_since_previous > days_threshold as i64 {
+        let severity = if days_since_previous > 730 {
+          Severity::Critical
+        } else if days_since_previous > 365 {
+          Severity::High
+        } else {
+          Severity::Medium
+        };
+
         let message = format!(
-                    "Package was dormant for {} days before this update (previous: {}). Sudden update after long dormancy is suspicious.",
-                    days_since_previous, prev_version
-                );
+          "Package was dormant for {} days before this update (previous: {}). Sudden update after long dormancy is suspicious.",
+          days_since_previous, prev_version
+        );
 
         let npm_url = format!("https://www.npmjs.com/package/{}", context.name);
         issues.push(
-          Issue::new(self.name(), message, Severity::High, "package.json")
+          Issue::new(self.name(), message, severity, "package.json")
             .with_package_name(context.name)
             .with_url(npm_url),
         );

@@ -51,14 +51,18 @@ impl PackageAnalyzer for DeprecatedAnalyzer {
           context.name, context.version, deprecation_msg
         );
 
-        let mut issue = Issue::new(
-          self.name(),
-          message,
-          Severity::Medium,
-          "package.json".to_string(),
-        );
+        let package_json_str = serde_json::to_string(&context.package_json).unwrap_or_default();
+        let line = crate::util::find_line_in_json(&package_json_str, "dependencies")
+          .or_else(|| crate::util::find_line_in_json(&package_json_str, "devDependencies"))
+          .unwrap_or(0);
+
+        let mut issue =
+          Issue::new(self.name(), message, Severity::Medium, "package.json".to_string());
         if let Some(pkg_name) = Some(context.name) {
           issue = issue.with_package_name(pkg_name);
+        }
+        if line > 0 {
+          issue = issue.with_line(line);
         }
         issues.push(issue);
       }

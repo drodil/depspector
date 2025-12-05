@@ -62,6 +62,15 @@ impl PackageAnalyzer for ReputationAnalyzer {
       let is_maintainer = metadata.maintainers.iter().any(|m| m.name == publisher.name);
 
       if !is_maintainer {
+        let publisher_has_history =
+          metadata.versions.iter().filter(|(v, _)| *v != context.version).any(
+            |(_, version_info)| {
+              version_info.npm_user.as_ref().map_or(false, |u| u.name == publisher.name)
+            },
+          );
+
+        let severity = if publisher_has_history { Severity::Medium } else { Severity::High };
+
         let message = format!(
           "Version published by user '{}' who is not listed as a maintainer.",
           publisher.name
@@ -69,7 +78,7 @@ impl PackageAnalyzer for ReputationAnalyzer {
 
         let npm_url = format!("https://www.npmjs.com/package/{}", context.name);
         issues.push(
-          Issue::new(self.name(), message, Severity::High, "package.json")
+          Issue::new(self.name(), message, severity, "package.json")
             .with_package_name(context.name)
             .with_url(npm_url),
         );

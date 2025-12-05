@@ -94,39 +94,52 @@ impl PackageAnalyzer for ScriptsAnalyzer {
       .and_then(|c| c.allowed_commands.clone())
       .unwrap_or_default();
 
-    for event in SUSPICIOUS_LIFECYCLE_EVENTS {
-      if let Some(script) = scripts_obj.get(*event) {
-        if let Some(script_str) = script.as_str() {
-          // Skip if lifecycle event is explicitly allowed
-          if allowed_scripts.contains(&event.to_string()) {
-            continue;
-          }
+    let package_json_str = serde_json::to_string(&context.package_json).unwrap_or_default();
 
-          // Skip if command matches default or configured allowed commands
-          let script_lower = script_str.to_lowercase();
-          let is_allowed = DEFAULT_ALLOWED_COMMANDS
-            .iter()
-            .any(|cmd| script_lower.starts_with(&cmd.to_lowercase()))
+    for (event, script_val) in scripts_obj.iter() {
+      if let Some(script_str) = script_val.as_str() {
+        // Skip if script is explicitly allowed
+        if allowed_scripts.contains(&event.to_string()) {
+          continue;
+        }
+
+        // Check if it's a lifecycle event or other suspicious script patterns
+        let is_lifecycle = SUSPICIOUS_LIFECYCLE_EVENTS.contains(&event.as_str());
+        let is_suspicious_by_default = is_lifecycle
+          || event.starts_with("pre")
+          || event.starts_with("post")
+          || event == "setup"
+          || event == "install"
+          || event == "uninstall";
+
+        // Only flag lifecycle/pre/post scripts as requiring review
+        if !is_suspicious_by_default {
+          continue;
+        }
+
+        let script_lower = script_str.to_lowercase();
+        let is_allowed =
+          DEFAULT_ALLOWED_COMMANDS.iter().any(|cmd| script_lower.starts_with(&cmd.to_lowercase()))
             || additional_allowed_commands
               .iter()
               .any(|cmd| script_lower.starts_with(&cmd.to_lowercase()));
 
-          if is_allowed {
-            continue;
-          }
-
-          // Determine severity based on the script content
-          let severity = Self::get_severity_for_script(script_str);
-
-          let message =
-            format!("Package uses lifecycle script: \"{}\". Review for security.", event);
-
-          issues.push(
-            Issue::new(self.name(), message, severity, "package.json")
-              .with_package_name(context.name)
-              .with_code(script_str.to_string()),
-          );
+        if is_allowed {
+          continue;
         }
+
+        let severity = Self::get_severity_for_script(script_str);
+
+        let message = format!("Package uses lifecycle script: \"{}\". Review for security.", event);
+
+        let line = crate::util::find_line_in_json(&package_json_str, event).unwrap_or(0);
+
+        issues.push(
+          Issue::new(self.name(), message, severity, "package.json")
+            .with_package_name(context.name)
+            .with_line(line)
+            .with_code(script_str.to_string()),
+        );
       }
     }
 
@@ -269,7 +282,10 @@ mod tests {
     let analyzer = ScriptsAnalyzer;
     let mut config = crate::config::Config::default();
 
-    let analyzer_config = crate::config::AnalyzerConfig { allowed_scripts: Some(vec!["postinstall".to_string()]), ..Default::default() };
+    let analyzer_config = crate::config::AnalyzerConfig {
+      allowed_scripts: Some(vec!["postinstall".to_string()]),
+      ..Default::default()
+    };
     config.analyzers.insert("scripts".to_string(), analyzer_config);
 
     let package_json = serde_json::json!({

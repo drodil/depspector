@@ -149,6 +149,18 @@ pub fn matches_ignore_id(issue_id: &str, ignore_id: &str) -> bool {
   false
 }
 
+pub fn find_line_in_json(content: &str, key: &str) -> Option<usize> {
+  let search_pattern = format!("\"{}\":", key);
+  let search_lower = search_pattern.to_lowercase();
+
+  for (line_num, line) in content.lines().enumerate() {
+    if line.to_lowercase().contains(&search_lower) {
+      return Some(line_num + 1);
+    }
+  }
+  None
+}
+
 pub fn is_base64_like(s: &str) -> bool {
   if s.len() < 20 {
     return false;
@@ -380,5 +392,31 @@ mod tests {
     assert!(is_sensitive_path("/home/user/.ssh/id_rsa"));
     assert!(is_sensitive_path(".npmrc"));
     assert!(!is_sensitive_path("/usr/local/lib/node_modules"));
+  }
+
+  #[test]
+  fn test_find_line_in_json_found() {
+    let content = r#"{
+  "name": "test",
+  "scripts": {
+    "postinstall": "node setup.js"
+  }
+}"#;
+    let line = find_line_in_json(content, "scripts");
+    assert_eq!(line, Some(3));
+  }
+
+  #[test]
+  fn test_find_line_in_json_not_found() {
+    let content = r#"{"name": "test"}"#;
+    let line = find_line_in_json(content, "nonexistent");
+    assert_eq!(line, None);
+  }
+
+  #[test]
+  fn test_find_line_in_json_case_insensitive() {
+    let content = r#"{"Scripts": {"test": "value"}}"#;
+    let line = find_line_in_json(content, "Scripts");
+    assert_eq!(line, Some(1));
   }
 }

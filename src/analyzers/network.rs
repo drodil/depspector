@@ -112,7 +112,7 @@ impl AstVisitor for NetworkVisitor<'_> {
         let mut issue = Issue::new(
           self.analyzer_name,
           message.to_string(),
-          Severity::High,
+          Severity::Medium,
           self.file_path.to_string(),
         )
         .with_line(line)
@@ -149,7 +149,7 @@ impl AstVisitor for NetworkVisitor<'_> {
         let mut issue = Issue::new(
           self.analyzer_name,
           message.to_string(),
-          Severity::High,
+          Severity::Medium,
           self.file_path.to_string(),
         )
         .with_line(line)
@@ -261,7 +261,10 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let analyzer_config = crate::config::AnalyzerConfig { allowed_hosts: Some(vec!["example.com".to_string()]), ..Default::default() };
+    let analyzer_config = crate::config::AnalyzerConfig {
+      allowed_hosts: Some(vec!["example.com".to_string()]),
+      ..Default::default()
+    };
     config.analyzers.insert("network".to_string(), analyzer_config);
 
     let source = r#"fetch("https://api.example.com/data");"#;
