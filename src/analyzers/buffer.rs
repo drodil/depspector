@@ -112,7 +112,8 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let analyzer_config = crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
+    let analyzer_config =
+      crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
     config.analyzers.insert("buffer".to_string(), analyzer_config);
 
     let source = r#"const buf = Buffer.from("hello world!");"#;

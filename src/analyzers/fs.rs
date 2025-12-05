@@ -255,7 +255,10 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let analyzer_config = crate::config::AnalyzerConfig { additional_dangerous_paths: Some(vec!["/custom/secret/path".to_string()]), ..Default::default() };
+    let analyzer_config = crate::config::AnalyzerConfig {
+      additional_dangerous_paths: Some(vec!["/custom/secret/path".to_string()]),
+      ..Default::default()
+    };
     config.analyzers.insert("fs".to_string(), analyzer_config);
 
     let source = r#"fs.readFile('/custom/secret/path/data.json');"#;

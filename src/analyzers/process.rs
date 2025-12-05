@@ -589,7 +589,10 @@ spawn(config.binary, ['-c', 'echo hello']);
     let file_path = PathBuf::from("test.js");
 
     // Configure allowed commands
-    let analyzer_config = crate::config::AnalyzerConfig { allowed_commands: Some(vec!["git".to_string(), "node".to_string()]), ..Default::default() };
+    let analyzer_config = crate::config::AnalyzerConfig {
+      allowed_commands: Some(vec!["git".to_string(), "node".to_string()]),
+      ..Default::default()
+    };
     config.analyzers.insert("process".to_string(), analyzer_config);
 
     let source = r#"

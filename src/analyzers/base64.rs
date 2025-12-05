@@ -104,7 +104,8 @@ mod tests {
     let mut config = crate::config::Config::default();
 
     // Set low threshold for testing
-    let analyzer_config = crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
+    let analyzer_config =
+      crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
     config.analyzers.insert("base64".to_string(), analyzer_config);
 
     let file_path = PathBuf::from("test.js");

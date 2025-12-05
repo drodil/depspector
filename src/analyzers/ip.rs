@@ -171,7 +171,10 @@ mod tests {
     let analyzer = IpAnalyzer;
     let mut config = crate::config::Config::default();
 
-    let analyzer_config = crate::config::AnalyzerConfig { allowed_ips: Some(vec!["8.8.8.8".to_string()]), ..Default::default() };
+    let analyzer_config = crate::config::AnalyzerConfig {
+      allowed_ips: Some(vec!["8.8.8.8".to_string()]),
+      ..Default::default()
+    };
     config.analyzers.insert("ip".to_string(), analyzer_config);
 
     let file_path = PathBuf::from("test.js");

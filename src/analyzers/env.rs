@@ -256,7 +256,10 @@ mod tests {
     let file_path = PathBuf::from("test.js");
 
     // Override defaults with custom allowed list including CUSTOM_VAR
-    let analyzer_config = crate::config::AnalyzerConfig { allowed_env_vars: Some(vec!["CUSTOM_VAR".to_string()]), ..Default::default() };
+    let analyzer_config = crate::config::AnalyzerConfig {
+      allowed_env_vars: Some(vec!["CUSTOM_VAR".to_string()]),
+      ..Default::default()
+    };
     config.analyzers.insert("env".to_string(), analyzer_config);
 
     let source = r#"const env = process.env.CUSTOM_VAR;"#;

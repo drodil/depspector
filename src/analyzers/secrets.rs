@@ -233,9 +233,10 @@ fn add_issue(
   severity: Severity,
 ) {
   let file_path_str = file_path.to_string();
-  let mut issue = Issue::new(analyzer_name.to_string(), message.to_string(), severity, file_path_str)
-    .with_line(line)
-    .with_code(redact_secret(value));
+  let mut issue =
+    Issue::new(analyzer_name.to_string(), message.to_string(), severity, file_path_str)
+      .with_line(line)
+      .with_code(redact_secret(value));
   if let Some(pkg) = package_name {
     issue = issue.with_package_name(pkg);
   }
