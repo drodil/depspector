@@ -275,3 +275,30 @@ describe("Clean Package", () => {
     expect(output).toMatch(/no issues|0 issues/i);
   });
 });
+
+describe("Multi-Version Package", () => {
+  it("should analyze all versions of the same package", () => {
+    const { stdout, stderr } = invokeCli([
+      "--cwd",
+      getFixturePath("multi-version-package"),
+      "--offline",
+      "--cache",
+      "false",
+    ]);
+
+    const output = stdout + stderr;
+
+    // Should find test-package with both versions
+    expect(output).toMatch(/test-package@0\.1\.0/);
+    expect(output).toMatch(/test-package@0\.2\.0/);
+
+    // Both versions should have eval issues detected
+    const evalMatches = output.match(/eval/gi);
+    expect(evalMatches).toBeTruthy();
+    expect(evalMatches!.length).toBeGreaterThanOrEqual(2);
+
+    // Verify both versions appear in the output
+    expect(output).toContain("from v0.1.0");
+    expect(output).toContain("from v0.2.0");
+  });
+});

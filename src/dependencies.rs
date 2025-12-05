@@ -334,7 +334,10 @@ impl DependencyGraph {
       visited.insert(pkg_name.clone());
       package_types.insert(pkg_name.clone(), dep_type);
 
-      if let Some(pkg_info) = all_node_modules_packages.iter().find(|p| p.name == pkg_name) {
+      let pkg_infos: Vec<_> =
+        all_node_modules_packages.iter().filter(|p| p.name == pkg_name).collect();
+
+      for pkg_info in pkg_infos {
         for dep in &pkg_info.dependencies {
           if !visited.contains(dep) {
             queue.push_back((dep.clone(), dep_type));

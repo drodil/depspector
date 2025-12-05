@@ -109,6 +109,8 @@ pub struct Issue {
   #[serde(skip)]
   package_name: Option<String>,
   #[serde(skip)]
+  package_version: Option<String>,
+  #[serde(skip)]
   id_generated: bool,
 }
 
@@ -129,6 +131,7 @@ impl Issue {
       file: file.into(),
       url: None,
       package_name: None,
+      package_version: None,
       id_generated: false,
     }
   }
@@ -175,7 +178,13 @@ impl Issue {
       .collect();
 
     let line_bucket = crate::util::normalize_line_bucket(self.line);
-    let hash_input = format!("{}:{}:{}", normalized_relative, line_bucket, message_sig);
+    let hash_input = format!(
+      "{}:{}:{}:{}",
+      normalized_relative,
+      line_bucket,
+      message_sig,
+      self.package_version.as_deref().unwrap_or("")
+    );
     let hash = crate::util::sha256_hash(&hash_input);
 
     let id = format!("{}-{}-{}", pkg_prefix, self.analyzer, &hash[..6]);
@@ -186,6 +195,12 @@ impl Issue {
 
   pub fn with_package_name(mut self, package_name: impl Into<String>) -> Self {
     self.package_name = Some(package_name.into());
+    self.id_generated = false;
+    self
+  }
+
+  pub fn with_package_version(mut self, package_version: impl Into<String>) -> Self {
+    self.package_version = Some(package_version.into());
     self.id_generated = false;
     self
   }
@@ -322,6 +337,9 @@ pub struct AnalysisResult {
   #[serde(default)]
   pub package: Option<String>,
 
+  #[serde(default)]
+  pub version: Option<String>,
+
   pub issues: Vec<Issue>,
 
   #[serde(default)]
@@ -342,6 +360,7 @@ impl AnalysisResult {
     Self {
       package_path: package_path.to_string(),
       package: None,
+      version: None,
       issues: vec![],
       trust_score: TrustScore::default(),
       dependency_type: DependencyType::Unknown,
@@ -354,6 +373,7 @@ impl AnalysisResult {
     Self {
       package_path: package_path.to_string(),
       package: Some(package.to_string()),
+      version: None,
       issues: vec![],
       trust_score: TrustScore::default(),
       dependency_type: DependencyType::Unknown,
@@ -796,6 +816,8 @@ impl Analyzer {
             let mut result = cached.clone();
             result.issues = filtered_issues;
             result.is_from_cache = true;
+            result.dependency_type = pkg_info.dependency_type;
+            result.is_transient = pkg_info.is_transient;
             cached_results.lock().unwrap().push(result);
             return;
           }
@@ -901,6 +923,7 @@ impl Analyzer {
     let result = AnalysisResult {
       package_path: normalize_path(&wi.pkg_path.to_string_lossy()),
       package: Some(wi.name.clone()),
+      version: Some(wi.version.clone()),
       issues: all_issues,
       trust_score,
       dependency_type: wi.dependency_type,

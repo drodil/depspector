@@ -191,25 +191,38 @@ impl Reporter {
     println!("\n{}", "Security Analysis Report".bold().underline());
     println!();
 
-    let mut by_package: std::collections::HashMap<String, Vec<&AnalysisResult>> =
+    let mut by_package_version: std::collections::HashMap<String, Vec<&AnalysisResult>> =
       std::collections::HashMap::new();
 
     for result in filtered {
       let pkg = result.package.clone().unwrap_or_else(|| "unknown".to_string());
-      by_package.entry(pkg).or_default().push(result);
+      let version = result.version.as_ref().map(|v| v.as_str()).unwrap_or("unknown");
+      let key = format!("{}@{}", pkg, version);
+      by_package_version.entry(key).or_default().push(result);
     }
 
-    let mut trust_scores: Vec<(&str, &TrustScore, DependencyType)> = filtered
+    let mut trust_scores: Vec<(String, &TrustScore, DependencyType, Option<String>)> = filtered
       .iter()
-      .filter_map(|r| r.package.as_ref().map(|p| (p.as_str(), &r.trust_score, r.dependency_type)))
+      .filter_map(|r| {
+        r.package.as_ref().map(|p| {
+          let display_name =
+            if let Some(v) = &r.version { format!("{}@{}", p, v) } else { p.clone() };
+          (display_name, &r.trust_score, r.dependency_type, r.version.clone())
+        })
+      })
       .collect();
 
     trust_scores.sort_by(|a, b| a.1.score.partial_cmp(&b.1.score).unwrap());
     trust_scores.dedup_by(|a, b| a.0 == b.0);
 
-    for (package, results) in &by_package {
+    let mut sorted_packages: Vec<_> = by_package_version.iter().collect();
+    sorted_packages
+      .sort_by(|(key_a, _), (key_b, _)| key_a.to_lowercase().cmp(&key_b.to_lowercase()));
+
+    for (package_version, results) in sorted_packages {
       let trust = results.first().map(|r| &r.trust_score);
       let dep_type = results.first().map(|r| r.dependency_type).unwrap_or(DependencyType::Unknown);
+      let is_transient = results.first().map(|r| r.is_transient).unwrap_or(false);
 
       let trust_display = if let Some(t) = trust {
         format!(" [Trust: {:.0} - {}]", t.score, t.trust_level())
@@ -217,12 +230,13 @@ impl Reporter {
         String::new()
       };
 
-      println!(
-        "📦 {} ({}){}",
-        package.cyan().bold(),
-        dependency_type_display(dep_type),
-        trust_display.dimmed()
-      );
+      let dep_display = if is_transient {
+        format!("{} transient", dependency_type_display(dep_type))
+      } else {
+        format!("{}", dependency_type_display(dep_type))
+      };
+
+      println!("📦 {} ({}){}", package_version.cyan().bold(), dep_display, trust_display.dimmed());
 
       #[allow(clippy::type_complexity)]
       {
@@ -316,7 +330,7 @@ impl Reporter {
       println!();
       println!("{}", "⚠️  Most Untrusted Packages:".yellow().bold());
 
-      for (package, trust, dep_type) in trust_scores.iter().take(3) {
+      for (package, trust, dep_type, _version) in trust_scores.iter().take(3) {
         let score_colored = if trust.score < 50.0 {
           format!("{:.0}", trust.score).red()
         } else if trust.score < 70.0 {
@@ -367,6 +381,7 @@ mod tests {
     let results = vec![AnalysisResult {
       package_path: "test-pkg".to_string(),
       package: Some("test-pkg".to_string()),
+      version: Some("1.0.0".to_string()),
       issues: vec![Issue::new("test", "test issue", Severity::High, "test.js").with_line(1)],
       is_from_cache: false,
       trust_score: TrustScore::default(),
@@ -387,6 +402,7 @@ mod tests {
     let results = vec![AnalysisResult {
       package_path: "test-pkg".to_string(),
       package: Some("test-pkg".to_string()),
+      version: Some("1.0.0".to_string()),
       issues: vec![Issue::new("test", "critical issue", Severity::Critical, "test.js").with_line(1)],
       is_from_cache: false,
       trust_score: TrustScore::default(),
