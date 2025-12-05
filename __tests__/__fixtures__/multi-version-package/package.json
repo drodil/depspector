@@ -1,0 +1,9 @@
+{
+  "name": "multi-version-package",
+  "version": "1.0.0",
+  "dependencies": {
+    "package1": "1.0.0",
+    "package2": "1.0.0",
+    "test": "0.1.0"
+  }
+}

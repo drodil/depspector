@@ -191,7 +191,21 @@ impl Reporter {
     println!("\n{}", "Security Analysis Report".bold().underline());
     println!();
 
-    let mut by_package_version: std::collections::HashMap<String, Vec<&AnalysisResult>> =
+    let by_package_version = self.group_by_package_version(filtered);
+    let trust_scores = self.build_trust_scores(filtered);
+    let sorted_packages: Vec<_> = by_package_version.iter().collect();
+
+    self.print_packages(&sorted_packages, min_severity, ctx);
+    self.print_summary(filtered);
+    self.print_untrusted_packages(&trust_scores);
+    self.print_deduplication_candidates(filtered);
+  }
+
+  fn group_by_package_version<'a>(
+    &self,
+    filtered: &'a [AnalysisResult],
+  ) -> std::collections::HashMap<String, Vec<&'a AnalysisResult>> {
+    let mut by_package_version: std::collections::HashMap<String, Vec<&'a AnalysisResult>> =
       std::collections::HashMap::new();
 
     for result in filtered {
@@ -201,112 +215,147 @@ impl Reporter {
       by_package_version.entry(key).or_default().push(result);
     }
 
-    let mut trust_scores: Vec<(String, &TrustScore, DependencyType, Option<String>)> = filtered
+    by_package_version
+  }
+
+  fn build_trust_scores(
+    &self,
+    filtered: &[AnalysisResult],
+  ) -> Vec<(String, TrustScore, DependencyType)> {
+    let mut trust_scores: Vec<(String, TrustScore, DependencyType)> = filtered
       .iter()
-      .filter_map(|r| {
-        r.package.as_ref().map(|p| {
-          let display_name =
-            if let Some(v) = &r.version { format!("{}@{}", p, v) } else { p.clone() };
-          (display_name, &r.trust_score, r.dependency_type, r.version.clone())
-        })
+      .map(|r| {
+        let display_name = if let Some(v) = &r.version {
+          format!("{}@{}", r.package.as_deref().unwrap_or("unknown"), v)
+        } else {
+          r.package.as_deref().unwrap_or("unknown").to_string()
+        };
+        (display_name, r.trust_score.clone(), r.dependency_type)
       })
       .collect();
 
     trust_scores.sort_by(|a, b| a.1.score.partial_cmp(&b.1.score).unwrap());
     trust_scores.dedup_by(|a, b| a.0 == b.0);
 
-    let mut sorted_packages: Vec<_> = by_package_version.iter().collect();
-    sorted_packages
-      .sort_by(|(key_a, _), (key_b, _)| key_a.to_lowercase().cmp(&key_b.to_lowercase()));
+    trust_scores
+  }
 
-    for (package_version, results) in sorted_packages {
-      let trust = results.first().map(|r| &r.trust_score);
-      let dep_type = results.first().map(|r| r.dependency_type).unwrap_or(DependencyType::Unknown);
-      let is_transient = results.first().map(|r| r.is_transient).unwrap_or(false);
+  fn print_packages(
+    &self,
+    sorted_packages: &[(&String, &Vec<&AnalysisResult>)],
+    min_severity: Severity,
+    ctx: &ReportContext,
+  ) {
+    let mut sorted = sorted_packages.to_vec();
+    sorted.sort_by(|(key_a, _), (key_b, _)| key_a.to_lowercase().cmp(&key_b.to_lowercase()));
 
-      let trust_display = if let Some(t) = trust {
-        format!(" [Trust: {:.0} - {}]", t.score, t.trust_level())
-      } else {
-        String::new()
-      };
+    for (package_version, results) in sorted {
+      self.print_package_details(package_version, results, min_severity, ctx);
+    }
+  }
 
-      let dep_display = if is_transient {
-        format!("{} transient", dependency_type_display(dep_type))
-      } else {
-        format!("{}", dependency_type_display(dep_type))
-      };
+  fn print_package_details(
+    &self,
+    package_version: &str,
+    results: &[&AnalysisResult],
+    min_severity: Severity,
+    ctx: &ReportContext,
+  ) {
+    let trust = results.first().map(|r| &r.trust_score);
+    let dep_type = results.first().map(|r| r.dependency_type).unwrap_or(DependencyType::Unknown);
+    let is_transient = results.first().map(|r| r.is_transient).unwrap_or(false);
 
-      println!("📦 {} ({}){}", package_version.cyan().bold(), dep_display, trust_display.dimmed());
+    let trust_display = if let Some(t) = trust {
+      format!(" [Trust: {:.0} - {}]", t.score, t.trust_level())
+    } else {
+      String::new()
+    };
 
-      #[allow(clippy::type_complexity)]
-      {
-        use std::collections::BTreeMap;
-        let mut grouped_issues: BTreeMap<
-          (String, String, String),
-          Vec<(String, usize, bool, Option<&str>)>,
-        > = BTreeMap::new();
+    let dep_display = if is_transient {
+      format!("{} transient", dependency_type_display(dep_type))
+    } else {
+      format!("{}", dependency_type_display(dep_type))
+    };
 
-        for result in results {
-          for issue in &result.issues {
-            if issue.severity < min_severity {
-              continue;
-            }
+    println!("📦 {} ({}){}", package_version.cyan().bold(), dep_display, trust_display.dimmed());
 
-            let file_path = if issue.file.is_empty() { &result.package_path } else { &issue.file };
-            let display_path = make_path_relative(file_path, ctx.working_dir);
+    self.print_package_issues(results, min_severity, ctx);
+    println!();
+  }
 
-            let key = (issue.message.clone(), issue.analyzer.clone(), issue.get_id());
-            grouped_issues.entry(key).or_default().push((
-              display_path,
-              issue.line,
-              result.is_from_cache,
-              issue.code.as_deref(),
-            ));
+  fn print_package_issues(
+    &self,
+    results: &[&AnalysisResult],
+    min_severity: Severity,
+    ctx: &ReportContext,
+  ) {
+    #[allow(clippy::type_complexity)]
+    {
+      use std::collections::BTreeMap;
+      let mut grouped_issues: BTreeMap<
+        (String, String, String),
+        Vec<(String, usize, bool, Option<&str>)>,
+      > = BTreeMap::new();
+
+      for result in results {
+        for issue in &result.issues {
+          if issue.severity < min_severity {
+            continue;
           }
-        }
 
-        for ((message, issue_type, id), paths_and_cache) in grouped_issues {
-          let first_result = results.iter().find_map(|r| {
-            r.issues
-              .iter()
-              .find(|i| i.message == message && i.analyzer == issue_type && i.get_id() == id)
-          });
+          let file_path = if issue.file.is_empty() { &result.package_path } else { &issue.file };
+          let display_path = make_path_relative(file_path, ctx.working_dir);
 
-          if let Some(issue) = first_result {
-            let severity_str = match issue.severity {
-              Severity::Critical => "CRITICAL".red().bold(),
-              Severity::High => "HIGH".red(),
-              Severity::Medium => "MEDIUM".yellow(),
-              Severity::Low => "LOW".white(),
-            };
-
-            let id_display = format!(" (ID: {})", id.dimmed());
-
-            println!("  {} [{}]{}: {}", severity_str, issue_type.dimmed(), id_display, message);
-
-            for (path, line, is_from_cache, _) in &paths_and_cache {
-              let location =
-                if *line == 0 { path.to_string() } else { format!("{}:{}", path, line) };
-              let path_display = if *is_from_cache {
-                format!("    {} {}", "↺".dimmed(), location.dimmed())
-              } else {
-                format!("    {}", location)
-              };
-              println!("{}", path_display);
-            }
-
-            if let Some(code) = &issue.code {
-              println!("      {}", truncate_line(code, MAX_LINE_LENGTH - 6).dimmed());
-            }
-
-            println!();
-          }
+          let key = (issue.message.clone(), issue.analyzer.clone(), issue.get_id());
+          grouped_issues.entry(key).or_default().push((
+            display_path,
+            issue.line,
+            result.is_from_cache,
+            issue.code.as_deref(),
+          ));
         }
       }
 
-      println!();
-    }
+      for ((message, issue_type, id), paths_and_cache) in grouped_issues {
+        let first_result = results.iter().find_map(|r| {
+          r.issues
+            .iter()
+            .find(|i| i.message == message && i.analyzer == issue_type && i.get_id() == id)
+        });
 
+        if let Some(issue) = first_result {
+          let severity_str = match issue.severity {
+            Severity::Critical => "CRITICAL".red().bold(),
+            Severity::High => "HIGH".red(),
+            Severity::Medium => "MEDIUM".yellow(),
+            Severity::Low => "LOW".white(),
+          };
+
+          let id_display = format!(" (ID: {})", id.dimmed());
+
+          println!("  {} [{}]{}: {}", severity_str, issue_type.dimmed(), id_display, message);
+
+          for (path, line, is_from_cache, _) in &paths_and_cache {
+            let location = if *line == 0 { path.to_string() } else { format!("{}:{}", path, line) };
+            let path_display = if *is_from_cache {
+              format!("    {} {}", "↺".dimmed(), location.dimmed())
+            } else {
+              format!("    {}", location)
+            };
+            println!("{}", path_display);
+          }
+
+          if let Some(code) = &issue.code {
+            println!("      {}", truncate_line(code, MAX_LINE_LENGTH - 6).dimmed());
+          }
+
+          println!();
+        }
+      }
+    }
+  }
+
+  fn print_summary(&self, filtered: &[AnalysisResult]) {
     let total_issues: usize = filtered.iter().map(|r| r.issues.len()).sum();
     let critical =
       filtered.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::Critical).count();
@@ -325,34 +374,81 @@ impl Reporter {
       medium,
       low
     );
+  }
 
-    if !trust_scores.is_empty() {
-      println!();
-      println!("{}", "⚠️  Most Untrusted Packages:".yellow().bold());
+  fn print_untrusted_packages(&self, trust_scores: &[(String, TrustScore, DependencyType)]) {
+    if trust_scores.is_empty() {
+      return;
+    }
 
-      for (package, trust, dep_type, _version) in trust_scores.iter().take(3) {
-        let score_colored = if trust.score < 50.0 {
-          format!("{:.0}", trust.score).red()
-        } else if trust.score < 70.0 {
-          format!("{:.0}", trust.score).truecolor(255, 165, 0)
-        } else if trust.score < 90.0 {
-          format!("{:.0}", trust.score).yellow()
-        } else {
-          format!("{:.0}", trust.score).green()
-        };
+    println!();
+    println!("{}", "⚠️  Most Untrusted Packages:".yellow().bold());
 
-        println!(
-          "  {} ({}) - Trust Score: {} ({}) - {} critical, {} high, {} medium, {} low",
-          package.cyan(),
-          dependency_type_display(*dep_type),
-          score_colored,
-          trust_level_colored(trust.score),
-          trust.critical_count.to_string().red(),
-          trust.high_count.to_string().yellow(),
-          trust.medium_count,
-          trust.low_count
-        );
+    for (package, trust, dep_type) in trust_scores.iter().take(3) {
+      let score_colored = if trust.score < 50.0 {
+        format!("{:.0}", trust.score).red()
+      } else if trust.score < 70.0 {
+        format!("{:.0}", trust.score).truecolor(255, 165, 0)
+      } else if trust.score < 90.0 {
+        format!("{:.0}", trust.score).yellow()
+      } else {
+        format!("{:.0}", trust.score).green()
+      };
+
+      println!(
+        "  {} ({}) - Trust Score: {} ({}) - {} critical, {} high, {} medium, {} low",
+        package.cyan(),
+        dependency_type_display(*dep_type),
+        score_colored,
+        trust_level_colored(trust.score),
+        trust.critical_count.to_string().red(),
+        trust.high_count.to_string().yellow(),
+        trust.medium_count,
+        trust.low_count
+      );
+    }
+  }
+
+  fn print_deduplication_candidates(&self, filtered: &[AnalysisResult]) {
+    let mut packages_by_name: std::collections::HashMap<String, Vec<String>> =
+      std::collections::HashMap::new();
+
+    for result in filtered {
+      if let Some(pkg) = &result.package {
+        let version =
+          result.version.as_ref().map(|v| v.clone()).unwrap_or_else(|| "unknown".to_string());
+        packages_by_name.entry(pkg.clone()).or_default().push(version);
       }
+    }
+
+    let dedup_candidates: Vec<_> = packages_by_name
+      .iter()
+      .filter_map(|(name, versions)| {
+        if versions.len() > 1 {
+          let mut unique_versions = versions.clone();
+          unique_versions.sort();
+          unique_versions.dedup();
+          if unique_versions.len() > 1 {
+            Some((name.clone(), unique_versions))
+          } else {
+            None
+          }
+        } else {
+          None
+        }
+      })
+      .collect();
+
+    if dedup_candidates.is_empty() {
+      return;
+    }
+
+    println!();
+    println!("{}", "💡 Deduplication Possibilities:".blue().bold());
+    println!("{}", "  The following packages appear in multiple versions:".dimmed());
+
+    for (name, versions) in dedup_candidates {
+      println!("  {} - versions: {}", name.cyan(), versions.join(", ").yellow());
     }
   }
 

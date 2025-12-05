@@ -38,6 +38,10 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   let matches = Cli::command().get_matches_from(args);
   let cli = Cli::from_arg_matches(&matches).map_err(format_cli_error::<Cli>)?;
 
+  if cli.no_color {
+    colored::control::set_override(false);
+  }
+
   let mut logger = env_logger::Builder::new();
   if cli.verbose.is_present() {
     logger.filter_level(cli.verbose.log_level_filter());
@@ -255,6 +259,8 @@ struct Cli {
   report_level: Option<String>,
   #[clap(long, help = "Show detailed benchmark/timing information for each analyzer")]
   benchmark: bool,
+  #[clap(long, help = "Disable colored output")]
+  no_color: bool,
   #[clap(long, help = "Include test files in analysis (skipped by default)")]
   include_tests: bool,
   #[clap(long, help = "Include dev dependencies in analysis (excluded by default)")]

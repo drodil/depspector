@@ -123,6 +123,7 @@ node bin.js [options]
 - `--cwd <path>`: Working directory where to run the analysis (default: `.`).
 - `--verbose`: Show detailed progress.
 - `--no-cache`: Disable package result caching (forces fresh analysis even if unchanged).
+- `--no-color`: Disable colored terminal output. Useful for piping to files or CI systems that don't support ANSI colors.
 - `--clear-cache`: Clear stored cache entries before scanning (use to force full regeneration while keeping caching enabled afterward).
 - `--fail-fast`: Stop analysis immediately when the first issue at or above the configured `exitWithFailureOnLevel` is found (useful for CI/CD to fail quickly).
 - `--only-new`: Show only new issues found in this scan, excluding issues from cached packages (useful for incremental analysis).
