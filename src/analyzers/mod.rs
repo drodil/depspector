@@ -809,6 +809,7 @@ impl Analyzer {
                 | "examples"
                 | "dist"
                 | "build"
+                | "dist-types"
                 | ".yarn"
             ) || config.exclude.iter().any(|e| e == dir_name)
             {
