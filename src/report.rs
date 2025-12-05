@@ -217,7 +217,7 @@ impl Reporter {
 
     for result in filtered {
       let pkg = result.package.clone().unwrap_or_else(|| "unknown".to_string());
-      let version = result.version.as_ref().map(|v| v.as_str()).unwrap_or("unknown");
+      let version = result.version.as_deref().unwrap_or("unknown");
       let key = format!("{}@{}", pkg, version);
       by_package_version.entry(key).or_default().push(result);
     }
@@ -431,8 +431,7 @@ impl Reporter {
 
     for result in filtered {
       if let Some(pkg) = &result.package {
-        let version =
-          result.version.as_ref().map(|v| v.clone()).unwrap_or_else(|| "unknown".to_string());
+        let version = result.version.clone().unwrap_or_else(|| "unknown".to_string());
         packages_by_name.entry(pkg.clone()).or_default().push(version);
       }
     }

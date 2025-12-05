@@ -65,7 +65,7 @@ impl PackageAnalyzer for ReputationAnalyzer {
         let publisher_has_history =
           metadata.versions.iter().filter(|(v, _)| *v != context.version).any(
             |(_, version_info)| {
-              version_info.npm_user.as_ref().map_or(false, |u| u.name == publisher.name)
+              version_info.npm_user.as_ref().is_some_and(|u| u.name == publisher.name)
             },
           );
 
