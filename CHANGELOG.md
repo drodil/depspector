@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.11](https://github.com/drodil/depspector/compare/v0.0.10...v0.0.11) (2025-12-05)
+
+
+### Features
+
+* **analyzer:** add cve link to report ([006b5cd](https://github.com/drodil/depspector/commit/006b5cd62e9e44551f32c3c49499924d4cc836e6))
+* **analyzer:** add license scan ([2f0bf24](https://github.com/drodil/depspector/commit/2f0bf24b70fdec5b2b72839af9717212cb0c8f86))
+* **analyzer:** fine tuning dynamic severities ([4b55aa6](https://github.com/drodil/depspector/commit/4b55aa63c55bd02830cbb4b0c53f54fdbad117ba))
+* **cli:** change to include sources by default ([c820fb1](https://github.com/drodil/depspector/commit/c820fb10c7838d3e6cf31afec34dbde022428c31))
+* **report:** add deduplication hints ([bb399d6](https://github.com/drodil/depspector/commit/bb399d610667bd9e370c1ca29b277d7481924d33))
+* **report:** show version numbers for packages ([92aa423](https://github.com/drodil/depspector/commit/92aa4234c7c3d6425e90de125c24461f68f9a9e4))
+
+
+### Bug Fixes
+
+* **analyzer:** improve number array detection ([bae3422](https://github.com/drodil/depspector/commit/bae34222a9acd494e19962530a4d45c036dccf5e))
+* **analyzer:** skip dist-types ([c5ead52](https://github.com/drodil/depspector/commit/c5ead52e29fd9f23e8dd414e65f74bcdb36e9bb8))
+* clippy warnings ([f180aac](https://github.com/drodil/depspector/commit/f180aacaf2019ebdd22c9340b8428f202ea63201))
+* formatting ([86258ad](https://github.com/drodil/depspector/commit/86258ad216a3e51f1dd89f9390928f7bd0271b8b))
+
 ### [0.0.10](https://github.com/drodil/depspector/compare/v0.0.9...v0.0.10) (2025-12-03)
 
 
