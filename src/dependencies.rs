@@ -55,7 +55,7 @@ impl DependencyGraph {
   pub fn build(
     cwd: &Path,
     node_modules_path: &Path,
-    include_sources: bool,
+    exclude_sources: bool,
     exclude_deps: bool,
     exclude_patterns: &[String],
     include_dev_deps: bool,
@@ -90,7 +90,7 @@ impl DependencyGraph {
 
     let mut discovered_packages = Vec::new();
 
-    if include_sources {
+    if !exclude_sources {
       discovered_packages.extend(all_workspace_packages);
     }
 

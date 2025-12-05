@@ -84,8 +84,8 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   if cli.skip_transient {
     config.skip_transient = true;
   }
-  if cli.include_sources {
-    config.include_sources = true;
+  if cli.exclude_sources {
+    config.exclude_sources = true;
   }
   if cli.exclude_deps {
     config.exclude_deps = true;
@@ -139,7 +139,7 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   let dependency_graph = DependencyGraph::build(
     &working_dir,
     &node_modules_path,
-    config.include_sources,
+    config.exclude_sources,
     config.exclude_deps,
     &config.exclude,
     config.include_dev_deps,
@@ -276,9 +276,9 @@ struct Cli {
   skip_transient: bool,
   #[clap(
     long,
-    help = "Include local source files in analysis (scans project directory excluding node_modules)"
+    help = "Exclude local source files from analysis (sources are included by default)"
   )]
-  include_sources: bool,
+  exclude_sources: bool,
   #[clap(long, help = "Exclude dependencies from analysis (skip node_modules scanning)")]
   exclude_deps: bool,
 }

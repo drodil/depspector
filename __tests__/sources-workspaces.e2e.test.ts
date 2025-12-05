@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { invokeCli, getFixturePath } from "./helpers";
 
-describe("Include Sources", () => {
-  it("should scan project sources when --include-sources is used", () => {
+describe("Source Scanning (included by default)", () => {
+  it("should scan project sources by default", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("sources-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -21,10 +20,11 @@ describe("Include Sources", () => {
     expect(output).toMatch(/network|https/i);
   });
 
-  it("should NOT scan project sources without --include-sources", () => {
+  it("should NOT scan project sources with --exclude-sources", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("sources-project"),
+      "--exclude-sources",
       "--offline",
       "--cache",
       "false",
@@ -40,7 +40,6 @@ describe("Include Sources", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("sources-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -53,11 +52,10 @@ describe("Include Sources", () => {
 });
 
 describe("Workspaces with Array Format", () => {
-  it("should scan all workspace packages with --include-sources", () => {
+  it("should scan all workspace packages by default", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("workspace-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -73,7 +71,6 @@ describe("Workspaces with Array Format", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("workspace-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -89,7 +86,6 @@ describe("Workspaces with Array Format", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("workspace-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -101,10 +97,11 @@ describe("Workspaces with Array Format", () => {
     expect(output).toMatch(/fs|file/i);
   });
 
-  it("should NOT scan workspaces without --include-sources", () => {
+  it("should NOT scan workspaces with --exclude-sources", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("workspace-project"),
+      "--exclude-sources",
       "--offline",
       "--cache",
       "false",
@@ -117,11 +114,10 @@ describe("Workspaces with Array Format", () => {
 });
 
 describe("Workspaces with Object Format", () => {
-  it("should scan workspaces defined with object format", () => {
+  it("should scan workspaces defined with object format by default", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("workspace-object-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -137,7 +133,6 @@ describe("Workspaces with Object Format", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("workspace-object-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -153,7 +148,6 @@ describe("Workspaces with Object Format", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("workspace-object-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",
@@ -167,11 +161,10 @@ describe("Workspaces with Object Format", () => {
 });
 
 describe("Mixed Dependencies and Sources", () => {
-  it("should scan both dependencies and sources with --include-sources", () => {
+  it("should scan both dependencies and sources by default", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("mixed-project"),
-      "--include-sources",
       "--offline",
       "--cache",
       "false",
@@ -185,10 +178,11 @@ describe("Mixed Dependencies and Sources", () => {
     expect(output).toMatch(/fs|file/i);
   });
 
-  it("should only scan dependencies without --include-sources", () => {
+  it("should only scan dependencies with --exclude-sources", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("mixed-project"),
+      "--exclude-sources",
       "--offline",
       "--cache",
       "false",
@@ -203,7 +197,6 @@ describe("Mixed Dependencies and Sources", () => {
     const { stdout, stderr } = invokeCli([
       "--cwd",
       getFixturePath("mixed-project"),
-      "--include-sources",
       "--exclude-deps",
       "--offline",
       "--cache",

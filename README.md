@@ -139,6 +139,8 @@ node bin.js [options]
 - `--include-tests`: Include test files in analysis. By default, test files are skipped (e.g., `*.test.js`, `*.spec.ts`, `jest.config.js`).
 - `--include-dev-deps`: Include dev dependencies in analysis. By default, dev dependencies are excluded to focus on production security.
 - `--skip-transient`: Skip transient dependencies and only scan packages listed directly in your root `package.json` (both `dependencies` and `devDependencies` if `--include-dev-deps` is set).
+- `--exclude-sources`: Exclude local source files and workspace packages from analysis. By default, depspector scans both your project's source files and any workspace packages alongside node_modules dependencies.
+- `--exclude-deps`: Exclude node_modules dependencies from analysis. Use with source scanning to analyze only your project's own code.
 
 ## Performance
 

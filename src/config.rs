@@ -104,7 +104,7 @@ pub struct Config {
   #[serde(default)]
   pub skip_transient: bool,
   #[serde(default)]
-  pub include_sources: bool,
+  pub exclude_sources: bool,
   #[serde(default)]
   pub exclude_deps: bool,
   #[serde(default)]
@@ -150,7 +150,7 @@ impl Default for Config {
       include_optional_deps: false,
       include_peer_deps: true,
       skip_transient: false,
-      include_sources: false,
+      exclude_sources: false,
       exclude_deps: false,
       npm: NpmConfig::default(),
       analyzers: HashMap::new(),

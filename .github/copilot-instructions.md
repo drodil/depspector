@@ -80,6 +80,24 @@ mod tests {
 }
 ```
 
+### E2E Tests
+
+- E2E tests are located in `__tests__/` directory
+- Tests use Vitest framework
+- **IMPORTANT**: Before running E2E tests, you MUST build the NAPI binary:
+  1. Run `npm run build` to compile and copy the native binary
+  2. Then run `npm test` to execute all E2E tests
+  3. Or run `npm test -- <pattern>` to run specific test files
+- E2E tests invoke the CLI binary and verify output
+- Test fixtures are in `__tests__/__fixtures__/`
+
+### Running the CLI Locally
+
+To run the tool locally using `node bin.js`:
+
+1. First compile the NAPI binary with `npm run build:debug`
+2. Then run `node bin.js [options]` to execute the CLI
+
 ## Analyzer Development
 
 ### Creating New Analyzers
@@ -225,8 +243,16 @@ src-rs/
 2. ✅ No Clippy warnings (`cargo clippy -- -D warnings`)
 3. ✅ Code is formatted (`cargo fmt`)
 4. ✅ Build succeeds (`cargo build --release`)
-5. ✅ Documentation updated if needed
-6. ✅ Commit message follows conventional format
+5. ✅ E2E tests pass (`npm run build && npm test`)
+6. ✅ Documentation updated if needed (README.md for user-facing changes)
+7. ✅ Commit message follows conventional format
+
+**IMPORTANT**: Always update `README.md` when:
+
+- Adding new CLI flags or options
+- Adding or modifying analyzers
+- Changing default behavior
+- Adding new configuration options
 
 ## Common Patterns
 

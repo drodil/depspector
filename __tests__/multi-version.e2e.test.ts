@@ -8,7 +8,7 @@ describe("Multi-version package analyzer", () => {
   const fixtureDir = path.join(
     __dirname,
     "__fixtures__",
-    "multi-version-package"
+    "multi-version-package",
   );
 
   it("should analyze all versions of the same package", () => {
@@ -33,7 +33,7 @@ describe("Multi-version package analyzer", () => {
 
       // Get the test packages from the results
       const testPackages = packages.filter(
-        (pkg: any) => pkg.package === "test" || pkg.package === "test-package"
+        (pkg: any) => pkg.package === "test" || pkg.package === "test-package",
       );
 
       // We should have test packages analyzed
@@ -111,7 +111,7 @@ describe("Multi-version package analyzer", () => {
       const output = readFileSync(jsonFile, "utf-8");
       const packages = JSON.parse(output);
       const testPackages = packages.filter(
-        (pkg: any) => pkg.package === "test" || pkg.package === "test-package"
+        (pkg: any) => pkg.package === "test" || pkg.package === "test-package",
       );
 
       // Verify we have test packages
@@ -119,7 +119,7 @@ describe("Multi-version package analyzer", () => {
 
       // Check that they have issues (eval usage)
       const testPackagesWithIssues = testPackages.filter(
-        (pkg: any) => pkg.issues && pkg.issues.length > 0
+        (pkg: any) => pkg.issues && pkg.issues.length > 0,
       );
       expect(testPackagesWithIssues.length).toBeGreaterThan(0);
     } finally {
