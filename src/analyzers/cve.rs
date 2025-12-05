@@ -12,6 +12,24 @@ impl CVEAnalyzer {
     Self
   }
 
+  fn get_vulnerability_url(id: &str) -> String {
+    let parts: Vec<&str> = id.splitn(2, '-').collect();
+    if parts.len() != 2 {
+      return format!("https://api.osv.dev/v1/vulns/{}", id);
+    }
+
+    let prefix = parts[0];
+
+    match prefix {
+      "CVE" => format!("https://nvd.nist.gov/vuln/detail/{}", id),
+      "GHSA" => format!("https://github.com/advisories/{}", id),
+      "RUSTSEC" => format!("https://rustsec.org/advisories/{}", id),
+      "PYSEC" | "OSV" => format!("https://osv.dev/vulnerability/{}", id),
+      "GO" => format!("https://pkg.go.dev/vuln/{}", id),
+      _ => format!("https://api.osv.dev/v1/vulns/{}", id),
+    }
+  }
+
   fn map_severity(&self, info: &VulnerabilityInfo) -> Severity {
     let critical_threshold = 9.0_f64;
     let high_threshold = 7.0_f64;
@@ -83,7 +101,8 @@ impl PackageAnalyzer for CVEAnalyzer {
       let summary =
         vuln.summary.or(vuln.details).unwrap_or_else(|| "Known vulnerability".to_string());
 
-      let message = format!("{}: {}", vuln.id, summary);
+      let url = Self::get_vulnerability_url(&vuln.id);
+      let message = format!("{}: {} ({})", vuln.id, summary, url);
 
       let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
 
@@ -117,5 +136,53 @@ mod tests {
   fn test_requires_network() {
     let analyzer = CVEAnalyzer::new();
     assert!(analyzer.requires_network());
+  }
+
+  #[test]
+  fn test_ghsa_url() {
+    let url = CVEAnalyzer::get_vulnerability_url("GHSA-xg73-94fp-g449");
+    assert_eq!(url, "https://github.com/advisories/GHSA-xg73-94fp-g449");
+  }
+
+  #[test]
+  fn test_cve_url() {
+    let url = CVEAnalyzer::get_vulnerability_url("CVE-2021-3114");
+    assert_eq!(url, "https://nvd.nist.gov/vuln/detail/CVE-2021-3114");
+  }
+
+  #[test]
+  fn test_pysec_url() {
+    let url = CVEAnalyzer::get_vulnerability_url("PYSEC-2022-28");
+    assert_eq!(url, "https://osv.dev/vulnerability/PYSEC-2022-28");
+  }
+
+  #[test]
+  fn test_osv_url() {
+    let url = CVEAnalyzer::get_vulnerability_url("OSV-2020-584");
+    assert_eq!(url, "https://osv.dev/vulnerability/OSV-2020-584");
+  }
+
+  #[test]
+  fn test_rustsec_url() {
+    let url = CVEAnalyzer::get_vulnerability_url("RUSTSEC-2019-0033");
+    assert_eq!(url, "https://rustsec.org/advisories/RUSTSEC-2019-0033");
+  }
+
+  #[test]
+  fn test_go_url() {
+    let url = CVEAnalyzer::get_vulnerability_url("GO-2021-0001");
+    assert_eq!(url, "https://pkg.go.dev/vuln/GO-2021-0001");
+  }
+
+  #[test]
+  fn test_unknown_prefix_url() {
+    let url = CVEAnalyzer::get_vulnerability_url("UNKNOWN-2021-0001");
+    assert_eq!(url, "https://api.osv.dev/v1/vulns/UNKNOWN-2021-0001");
+  }
+
+  #[test]
+  fn test_invalid_id_format() {
+    let url = CVEAnalyzer::get_vulnerability_url("INVALID");
+    assert_eq!(url, "https://api.osv.dev/v1/vulns/INVALID");
   }
 }
