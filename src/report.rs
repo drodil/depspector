@@ -149,7 +149,7 @@ impl Reporter {
       let package = result.package.as_deref().unwrap_or("unknown");
 
       for issue in &result.issues {
-        let file_path = issue.file.as_ref().unwrap_or(&result.package_path);
+        let file_path = if issue.file.is_empty() { &result.package_path } else { &issue.file };
         let severity = match issue.severity {
           Severity::Critical => "critical",
           Severity::High => "high",
@@ -163,10 +163,10 @@ impl Reporter {
             file_path,
             &issue.line.to_string(),
             severity,
-            &issue.issue_type,
+            &issue.analyzer,
             &issue.message,
             issue.code.as_deref().unwrap_or(""),
-            issue.id.as_deref().unwrap_or(""),
+            &issue.get_id(),
           ])
           .map_err(|e| std::io::Error::other(e.to_string()))?;
       }
@@ -224,47 +224,69 @@ impl Reporter {
         trust_display.dimmed()
       );
 
-      // Issues are already deduplicated in the analyzer
-      let all_issues: Vec<_> = results
-        .iter()
-        .flat_map(|r| r.issues.iter().map(move |i| (i, &r.package_path, r.is_from_cache)))
-        .collect();
+      #[allow(clippy::type_complexity)]
+      {
+        use std::collections::BTreeMap;
+        let mut grouped_issues: BTreeMap<
+          (String, String, String),
+          Vec<(String, usize, bool, Option<&str>)>,
+        > = BTreeMap::new();
 
-      for (issue, package_path, is_from_cache) in &all_issues {
-        if issue.severity < min_severity {
-          continue;
+        for result in results {
+          for issue in &result.issues {
+            if issue.severity < min_severity {
+              continue;
+            }
+
+            let file_path = if issue.file.is_empty() { &result.package_path } else { &issue.file };
+            let display_path = make_path_relative(file_path, ctx.working_dir);
+
+            let key = (issue.message.clone(), issue.analyzer.clone(), issue.get_id());
+            grouped_issues.entry(key).or_default().push((
+              display_path,
+              issue.line,
+              result.is_from_cache,
+              issue.code.as_deref(),
+            ));
+          }
         }
 
-        let severity_str = match issue.severity {
-          Severity::Critical => "CRITICAL".red().bold(),
-          Severity::High => "HIGH".red(),
-          Severity::Medium => "MEDIUM".yellow(),
-          Severity::Low => "LOW".white(),
-        };
+        for ((message, issue_type, id), paths_and_cache) in grouped_issues {
+          let first_result = results.iter().find_map(|r| {
+            r.issues
+              .iter()
+              .find(|i| i.message == message && i.analyzer == issue_type && i.get_id() == id)
+          });
 
-        let file_path = issue.file.as_ref().unwrap_or(package_path);
-        let display_path = make_path_relative(file_path, ctx.working_dir);
-        let location = format!("{}:{}", display_path, issue.line);
-        let location_display = if *is_from_cache {
-          format!("  {} {}", "↺".dimmed(), location.dimmed())
-        } else {
-          format!("  {}", location)
-        };
+          if let Some(issue) = first_result {
+            let severity_str = match issue.severity {
+              Severity::Critical => "CRITICAL".red().bold(),
+              Severity::High => "HIGH".red(),
+              Severity::Medium => "MEDIUM".yellow(),
+              Severity::Low => "LOW".white(),
+            };
 
-        println!(
-          "{}: {} [{}] {}",
-          location_display,
-          severity_str,
-          issue.issue_type.dimmed(),
-          issue.message,
-        );
+            let id_display = format!(" (ID: {})", id.dimmed());
 
-        if let Some(code) = &issue.code {
-          println!("      {}", truncate_line(code, MAX_LINE_LENGTH - 6).dimmed());
-        }
+            println!("  {} [{}]{}: {}", severity_str, issue_type.dimmed(), id_display, message);
 
-        if let Some(id) = &issue.id {
-          println!("      ID: {}", id.dimmed());
+            for (path, line, is_from_cache, _) in &paths_and_cache {
+              let location =
+                if *line == 0 { path.to_string() } else { format!("{}:{}", path, line) };
+              let path_display = if *is_from_cache {
+                format!("    {} {}", "↺".dimmed(), location.dimmed())
+              } else {
+                format!("    {}", location)
+              };
+              println!("{}", path_display);
+            }
+
+            if let Some(code) = &issue.code {
+              println!("      {}", truncate_line(code, MAX_LINE_LENGTH - 6).dimmed());
+            }
+
+            println!();
+          }
         }
       }
 
@@ -345,16 +367,7 @@ mod tests {
     let results = vec![AnalysisResult {
       package_path: "test-pkg".to_string(),
       package: Some("test-pkg".to_string()),
-      issues: vec![Issue {
-        issue_type: "test".to_string(),
-        line: 1,
-        message: "test issue".to_string(),
-        severity: Severity::High,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      }],
+      issues: vec![Issue::new("test", "test issue", Severity::High, "test.js").with_line(1)],
       is_from_cache: false,
       trust_score: TrustScore::default(),
       dependency_type: DependencyType::Unknown,
@@ -374,20 +387,11 @@ mod tests {
     let results = vec![AnalysisResult {
       package_path: "test-pkg".to_string(),
       package: Some("test-pkg".to_string()),
-      issues: vec![Issue {
-        issue_type: "test".to_string(),
-        line: 1,
-        message: "critical issue".to_string(),
-        severity: Severity::Critical,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      }],
+      issues: vec![Issue::new("test", "critical issue", Severity::Critical, "test.js").with_line(1)],
+      is_from_cache: false,
       trust_score: TrustScore::default(),
       dependency_type: DependencyType::Unknown,
       is_transient: false,
-      is_from_cache: false,
     }];
 
     assert!(reporter.has_issues_at_level(&results, "high"));

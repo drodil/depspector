@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, AstVisitor, CallInfo, NodeInterest, VariableMap};
-use crate::util::{generate_issue_id, LineIndex};
+use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -78,19 +78,13 @@ impl NetworkVisitor<'_> {
     }
 
     let message = "HTTP request detected".to_string();
-    let id =
-      generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
 
-    self.issues.push(Issue {
-      issue_type: self.analyzer_name.to_string(),
-      line,
-      message,
-      severity: Severity::Medium,
-      code: Some(self.line_index.get_line(line)),
-      analyzer: Some(self.analyzer_name.to_string()),
-      id: Some(id),
-      file: None,
-    });
+    self.issues.push(
+      Issue::new(self.analyzer_name, message, Severity::Medium, self.file_path.to_string())
+        .with_package_name(self.package_name.unwrap_or("unknown"))
+        .with_line(line)
+        .with_code(self.line_index.get_line(line)),
+    );
   }
 }
 
@@ -114,19 +108,19 @@ impl AstVisitor for NetworkVisitor<'_> {
 
       if callee == "WebSocket" {
         let message = "Socket connection detected";
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message: message.to_string(),
-          severity: Severity::High,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let mut issue = Issue::new(
+          self.analyzer_name,
+          message.to_string(),
+          Severity::High,
+          self.file_path.to_string(),
+        )
+        .with_line(line)
+        .with_code(self.line_index.get_line(line));
+        if let Some(pkg) = self.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        self.issues.push(issue);
       }
     }
 
@@ -134,36 +128,36 @@ impl AstVisitor for NetworkVisitor<'_> {
       // http/https module methods
       if (object == "http" || object == "https") && HTTP_METHODS.contains(&callee.as_str()) {
         let message = "HTTP request function detected";
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message: message.to_string(),
-          severity: Severity::Medium,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let mut issue = Issue::new(
+          self.analyzer_name,
+          message.to_string(),
+          Severity::Medium,
+          self.file_path.to_string(),
+        )
+        .with_line(line)
+        .with_code(self.line_index.get_line(line));
+        if let Some(pkg) = self.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        self.issues.push(issue);
       }
 
       if (object == "net" || object == "socket") && SOCKET_FUNCTIONS.contains(&callee.as_str()) {
         let message = "Socket connection detected";
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message: message.to_string(),
-          severity: Severity::High,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let mut issue = Issue::new(
+          self.analyzer_name,
+          message.to_string(),
+          Severity::High,
+          self.file_path.to_string(),
+        )
+        .with_line(line)
+        .with_code(self.line_index.get_line(line));
+        if let Some(pkg) = self.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        self.issues.push(issue);
       }
     }
   }
@@ -267,8 +261,7 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.allowed_hosts = Some(vec!["example.com".to_string()]);
+    let analyzer_config = crate::config::AnalyzerConfig { allowed_hosts: Some(vec!["example.com".to_string()]), ..Default::default() };
     config.analyzers.insert("network".to_string(), analyzer_config);
 
     let source = r#"fetch("https://api.example.com/data");"#;

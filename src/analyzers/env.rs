@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, AstVisitor, DestructureInfo, MemberAccessInfo, NodeInterest};
-use crate::util::{generate_issue_id, LineIndex};
+use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -63,21 +63,15 @@ impl EnvVisitor<'_> {
     }
 
     let message = format!("Access to process.env.{} detected", var_name);
-    let id =
-      generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
 
     let severity = if is_sensitive_env_var(var_name) { Severity::Medium } else { Severity::Low };
 
-    self.issues.push(Issue {
-      issue_type: self.analyzer_name.to_string(),
-      line,
-      message,
-      severity,
-      code: Some(self.line_index.get_line(line)),
-      analyzer: Some(self.analyzer_name.to_string()),
-      id: Some(id),
-      file: None,
-    });
+    self.issues.push(
+      Issue::new(self.analyzer_name, message, severity, self.file_path.to_string())
+        .with_package_name(self.package_name.unwrap_or("unknown"))
+        .with_line(line)
+        .with_code(self.line_index.get_line(line)),
+    );
   }
 }
 
@@ -262,8 +256,7 @@ mod tests {
     let file_path = PathBuf::from("test.js");
 
     // Override defaults with custom allowed list including CUSTOM_VAR
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.allowed_env_vars = Some(vec!["CUSTOM_VAR".to_string()]);
+    let analyzer_config = crate::config::AnalyzerConfig { allowed_env_vars: Some(vec!["CUSTOM_VAR".to_string()]), ..Default::default() };
     config.analyzers.insert("env".to_string(), analyzer_config);
 
     let source = r#"const env = process.env.CUSTOM_VAR;"#;

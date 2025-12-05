@@ -2,7 +2,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
-use crate::util::generate_issue_id;
 
 pub struct BufferAnalyzer;
 
@@ -39,24 +38,16 @@ impl FileAnalyzer for BufferAnalyzer {
               data_str.len()
             );
 
-            let id = generate_issue_id(
-              self.name(),
-              context.file_path.to_str().unwrap_or(""),
-              line_num + 1,
-              &message,
-              context.package_name,
-            );
+            let file_path = context.file_path.to_str().unwrap_or("unknown");
+            let mut issue = Issue::new(self.name(), message, Severity::High, file_path)
+              .with_line(line_num + 1)
+              .with_code(line.trim().to_string());
 
-            issues.push(Issue {
-              issue_type: self.name().to_string(),
-              line: line_num + 1,
-              message,
-              severity: Severity::High,
-              code: Some(line.trim().to_string()),
-              analyzer: Some(self.name().to_string()),
-              id: Some(id),
-              file: None,
-            });
+            if let Some(pkg) = context.package_name {
+              issue = issue.with_package_name(pkg);
+            }
+
+            issues.push(issue);
           }
         }
       }
@@ -121,8 +112,7 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.min_buffer_length = Some(10);
+    let analyzer_config = crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
     config.analyzers.insert("buffer".to_string(), analyzer_config);
 
     let source = r#"const buf = Buffer.from("hello world!");"#;

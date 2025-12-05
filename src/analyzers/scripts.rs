@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
-use crate::util::generate_issue_id;
 
 const SUSPICIOUS_LIFECYCLE_EVENTS: &[&str] =
   &["preinstall", "install", "postinstall", "prepublish", "prepare", "prepack", "postpack"];
@@ -122,18 +121,11 @@ impl PackageAnalyzer for ScriptsAnalyzer {
           let message =
             format!("Package uses lifecycle script: \"{}\". Review for security.", event);
 
-          let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
-
-          issues.push(Issue {
-            issue_type: self.name().to_string(),
-            line: 0,
-            message,
-            severity,
-            code: Some(script_str.to_string()),
-            analyzer: Some(self.name().to_string()),
-            id: Some(id),
-            file: None,
-          });
+          issues.push(
+            Issue::new(self.name(), message, severity, "package.json")
+              .with_package_name(context.name)
+              .with_code(script_str.to_string()),
+          );
         }
       }
     }
@@ -277,8 +269,7 @@ mod tests {
     let analyzer = ScriptsAnalyzer;
     let mut config = crate::config::Config::default();
 
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.allowed_scripts = Some(vec!["postinstall".to_string()]);
+    let analyzer_config = crate::config::AnalyzerConfig { allowed_scripts: Some(vec!["postinstall".to_string()]), ..Default::default() };
     config.analyzers.insert("scripts".to_string(), analyzer_config);
 
     let package_json = serde_json::json!({

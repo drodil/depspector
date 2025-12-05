@@ -2,7 +2,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
-use crate::util::generate_issue_id;
 
 use regex::RegexSet;
 
@@ -233,18 +232,14 @@ fn add_issue(
   message: &str,
   severity: Severity,
 ) {
-  let id = generate_issue_id(analyzer_name, file_path, line, message, package_name);
-
-  issues.push(Issue {
-    issue_type: analyzer_name.to_string(),
-    line,
-    message: message.to_string(),
-    severity,
-    code: Some(redact_secret(value)),
-    analyzer: Some(analyzer_name.to_string()),
-    id: Some(id),
-    file: None,
-  });
+  let file_path_str = file_path.to_string();
+  let mut issue = Issue::new(analyzer_name.to_string(), message.to_string(), severity, file_path_str)
+    .with_line(line)
+    .with_code(redact_secret(value));
+  if let Some(pkg) = package_name {
+    issue = issue.with_package_name(pkg);
+  }
+  issues.push(issue);
 }
 
 fn redact_secret(value: &str) -> String {

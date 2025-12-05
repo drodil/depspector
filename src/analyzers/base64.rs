@@ -1,5 +1,4 @@
 use super::{FileAnalyzer, FileContext, Issue, Severity};
-use crate::util::generate_issue_id;
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -72,30 +71,26 @@ fn report_issue(
   let line_num = context.source[..start_idx].lines().count();
   let message = format!("Large Base64 blob detected ({} characters)", len);
 
-  let id = generate_issue_id(
-    analyzer_name,
-    context.file_path.to_str().unwrap_or(""),
-    line_num,
-    &message,
-    context.package_name,
-  );
-
   let snippet = if len > 50 {
     format!("{}...", &context.source[start_idx..start_idx + 50])
   } else {
     context.source[start_idx..start_idx + len].to_string()
   };
 
-  issues.push(Issue {
-    issue_type: analyzer_name.to_string(),
-    line: line_num,
+  let mut issue = Issue::new(
+    analyzer_name,
     message,
-    severity: Severity::Low,
-    code: Some(snippet),
-    analyzer: Some(analyzer_name.to_string()),
-    id: Some(id),
-    file: None,
-  });
+    Severity::Low,
+    context.file_path.to_string_lossy().to_string(),
+  )
+  .with_line(line_num)
+  .with_code(snippet);
+
+  if let Some(pkg) = context.package_name {
+    issue = issue.with_package_name(pkg);
+  }
+
+  issues.push(issue);
 }
 
 #[cfg(test)]
@@ -109,8 +104,7 @@ mod tests {
     let mut config = crate::config::Config::default();
 
     // Set low threshold for testing
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.min_buffer_length = Some(10);
+    let analyzer_config = crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
     config.analyzers.insert("base64".to_string(), analyzer_config);
 
     let file_path = PathBuf::from("test.js");

@@ -2,7 +2,6 @@ use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
 use crate::prefetch::VulnerabilityInfo;
-use crate::util::generate_issue_id;
 
 #[derive(Default)]
 pub struct CVEAnalyzer;
@@ -102,20 +101,13 @@ impl PackageAnalyzer for CVEAnalyzer {
         vuln.summary.or(vuln.details).unwrap_or_else(|| "Known vulnerability".to_string());
 
       let url = Self::get_vulnerability_url(&vuln.id);
-      let message = format!("{}: {} ({})", vuln.id, summary, url);
+      let message = format!("{}: {}", vuln.id, summary);
 
-      let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
-
-      issues.push(Issue {
-        issue_type: self.name().to_string(),
-        line: 0,
-        message,
-        severity,
-        code: None,
-        analyzer: Some(self.name().to_string()),
-        id: Some(id),
-        file: None,
-      });
+      issues.push(
+        Issue::new(self.name(), message, severity, "package.json")
+          .with_package_name(context.name)
+          .with_url(url),
+      );
     }
 
     issues

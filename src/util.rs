@@ -55,7 +55,7 @@ pub fn sha256_hash(input: &str) -> String {
   hex::encode(result)
 }
 
-fn extract_relative_path(file_path: &str) -> String {
+pub fn extract_relative_path(file_path: &str) -> String {
   let normalized = file_path.replace('\\', "/");
 
   // Look for node_modules with or without leading slash
@@ -85,7 +85,7 @@ fn extract_relative_path(file_path: &str) -> String {
   normalized.rsplit('/').next().unwrap_or(&normalized).to_string()
 }
 
-fn normalize_line_bucket(line: usize) -> usize {
+pub fn normalize_line_bucket(line: usize) -> usize {
   (line / 20) * 20
 }
 

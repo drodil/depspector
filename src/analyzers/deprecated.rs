@@ -46,25 +46,21 @@ impl PackageAnalyzer for DeprecatedAnalyzer {
 
     if let Some(version_info) = metadata.versions.get(context.version) {
       if let Some(ref deprecation_msg) = version_info.deprecated {
-        issues.push(Issue {
-          issue_type: "deprecated".to_string(),
-          line: 0,
-          message: format!(
-            "Package '{}@{}' is deprecated: {}",
-            context.name, context.version, deprecation_msg
-          ),
-          severity: Severity::Medium,
-          code: None,
-          analyzer: Some(self.name().to_string()),
-          id: Some(crate::util::generate_issue_id(
-            self.name(),
-            context.name,
-            0,
-            "deprecated",
-            Some(context.name),
-          )),
-          file: None,
-        });
+        let message = format!(
+          "Package '{}@{}' is deprecated: {}",
+          context.name, context.version, deprecation_msg
+        );
+
+        let mut issue = Issue::new(
+          self.name(),
+          message,
+          Severity::Medium,
+          "package.json".to_string(),
+        );
+        if let Some(pkg_name) = Some(context.name) {
+          issue = issue.with_package_name(pkg_name);
+        }
+        issues.push(issue);
       }
     }
 

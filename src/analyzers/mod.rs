@@ -96,18 +96,166 @@ impl std::str::FromStr for Severity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Issue {
   #[serde(rename = "type")]
-  pub issue_type: String,
+  pub analyzer: String,
   pub line: usize,
   pub message: String,
   pub severity: Severity,
   #[serde(default)]
   pub code: Option<String>,
-  #[serde(default)]
-  pub analyzer: Option<String>,
-  #[serde(default)]
-  pub id: Option<String>,
+  pub id: String,
+  pub file: String,
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub file: Option<String>,
+  pub url: Option<String>,
+  #[serde(skip)]
+  package_name: Option<String>,
+  #[serde(skip)]
+  id_generated: bool,
+}
+
+impl Issue {
+  pub fn new(
+    analyzer: impl Into<String>,
+    message: impl Into<String>,
+    severity: Severity,
+    file: impl Into<String>,
+  ) -> Self {
+    Self {
+      analyzer: analyzer.into(),
+      line: 0,
+      message: message.into(),
+      severity,
+      code: None,
+      id: String::new(),
+      file: file.into(),
+      url: None,
+      package_name: None,
+      id_generated: false,
+    }
+  }
+
+  fn generate_id(&mut self) {
+    if self.id_generated {
+      return;
+    }
+
+    let pkg_prefix = self
+      .package_name
+      .as_deref()
+      .map(|name| {
+        let clean = name.trim_start_matches('@').replace('/', "-");
+        let prefix: String = clean.chars().take(8).collect();
+        prefix
+      })
+      .unwrap_or_else(|| "unknown".to_string());
+
+    let relative_path = crate::util::extract_relative_path(&self.file);
+
+    let normalized_relative = relative_path
+      .replace("dist-node/", "")
+      .replace("dist-src/", "")
+      .replace("dist-web/", "")
+      .replace("dist-cjs/", "")
+      .replace("dist-esm/", "")
+      .replace("dist-types/", "")
+      .replace("dist/", "")
+      .replace("lib/", "")
+      .replace("build/", "")
+      .replace("cjs/", "")
+      .replace("esm/", "")
+      .replace("umd/", "");
+
+    let message_sig: String = self
+      .message
+      .split_whitespace()
+      .take(4)
+      .collect::<Vec<_>>()
+      .join(" ")
+      .chars()
+      .take(40)
+      .collect();
+
+    let line_bucket = crate::util::normalize_line_bucket(self.line);
+    let hash_input = format!("{}:{}:{}", normalized_relative, line_bucket, message_sig);
+    let hash = crate::util::sha256_hash(&hash_input);
+
+    let id = format!("{}-{}-{}", pkg_prefix, self.analyzer, &hash[..6]);
+    let cleaned = id.replace("--", "-");
+    self.id = cleaned.to_uppercase();
+    self.id_generated = true;
+  }
+
+  pub fn with_package_name(mut self, package_name: impl Into<String>) -> Self {
+    self.package_name = Some(package_name.into());
+    self.id_generated = false;
+    self
+  }
+
+  pub fn with_line(mut self, line: usize) -> Self {
+    self.line = line;
+    self.id_generated = false;
+    self.generate_id();
+    self
+  }
+
+  pub fn with_code(mut self, code: impl Into<String>) -> Self {
+    self.code = Some(code.into());
+    self
+  }
+
+  pub fn with_url(mut self, url: impl Into<String>) -> Self {
+    self.url = Some(url.into());
+    self
+  }
+
+  pub fn get_id(&self) -> String {
+    if self.id_generated {
+      return self.id.clone();
+    }
+
+    let pkg_prefix = self
+      .package_name
+      .as_deref()
+      .map(|name| {
+        let clean = name.trim_start_matches('@').replace('/', "-");
+        let prefix: String = clean.chars().take(8).collect();
+        prefix
+      })
+      .unwrap_or_else(|| "unknown".to_string());
+
+    let relative_path = crate::util::extract_relative_path(&self.file);
+
+    let normalized_relative = relative_path
+      .replace("dist-node/", "")
+      .replace("dist-src/", "")
+      .replace("dist-web/", "")
+      .replace("dist-cjs/", "")
+      .replace("dist-esm/", "")
+      .replace("dist-types/", "")
+      .replace("dist/", "")
+      .replace("lib/", "")
+      .replace("build/", "")
+      .replace("cjs/", "")
+      .replace("esm/", "")
+      .replace("umd/", "");
+
+    let message_sig: String = self
+      .message
+      .split_whitespace()
+      .take(4)
+      .collect::<Vec<_>>()
+      .join(" ")
+      .chars()
+      .take(40)
+      .collect();
+
+    let line_bucket = crate::util::normalize_line_bucket(self.line);
+    let hash_input = format!("{}:{}:{}", normalized_relative, line_bucket, message_sig);
+    let hash = crate::util::sha256_hash(&hash_input);
+
+    let id = format!("{}-{}-{}", pkg_prefix, self.analyzer, &hash[..6]);
+    let cleaned = id.replace("--", "-");
+    cleaned.to_uppercase()
+  }
 }
 
 const CRITICAL_PENALTY: f64 = 15.0;
@@ -630,13 +778,13 @@ impl Analyzer {
             .issues
             .iter()
             .filter(|issue| {
-              self.active_analyzers.iter().any(|a| a.eq_ignore_ascii_case(&issue.issue_type))
+              self.active_analyzers.iter().any(|a| a.eq_ignore_ascii_case(&issue.analyzer))
             })
             .cloned()
             .collect();
 
           let cached_analyzer_types: std::collections::HashSet<_> =
-            filtered_issues.iter().map(|i| i.issue_type.to_lowercase()).collect();
+            filtered_issues.iter().map(|i| i.analyzer.to_lowercase()).collect();
 
           let missing_analyzers: Vec<_> = self
             .active_analyzers
@@ -721,9 +869,9 @@ impl Analyzer {
 
     // Set absolute file path for package-level issues
     for issue in &mut package_issues {
-      if issue.file.is_none() {
+      if issue.file.is_empty() {
         let pkg_json_path = wi.pkg_path.join("package.json");
-        issue.file = Some(normalize_path(&pkg_json_path.to_string_lossy()));
+        issue.file = normalize_path(&pkg_json_path.to_string_lossy());
       }
     }
 
@@ -738,17 +886,14 @@ impl Analyzer {
 
     let mut seen_ids = std::collections::HashSet::new();
     all_issues.retain(|issue| {
-      if let Some(id) = &issue.id {
-        if ctx.ignore_issues.contains(id) {
-          if let Ok(mut set) = ctx.ignored_ids.lock() {
-            set.insert(id.clone());
-          }
-          return false;
+      let id = issue.get_id();
+      if ctx.ignore_issues.contains(&id) {
+        if let Ok(mut set) = ctx.ignored_ids.lock() {
+          set.insert(id.clone());
         }
-        seen_ids.insert(id.clone())
-      } else {
-        true
+        return false;
       }
+      seen_ids.insert(id)
     });
 
     let trust_score = TrustScore::calculate(&all_issues);
@@ -885,16 +1030,15 @@ impl Analyzer {
         );
         let file_path_str = normalize_path(&js_path.to_string_lossy());
         for issue in &mut file_issues {
-          issue.file = Some(file_path_str.clone());
+          issue.file = file_path_str.clone();
         }
         file_issues.retain(|i| {
-          if let Some(id) = &i.id {
-            if ctx.ignore_issues.contains(id) {
-              if let Ok(mut set) = ctx.ignored_ids.lock() {
-                set.insert(id.clone());
-              }
-              return false;
+          let id = i.get_id();
+          if ctx.ignore_issues.contains(&id) {
+            if let Ok(mut set) = ctx.ignored_ids.lock() {
+              set.insert(id.clone());
             }
+            return false;
           }
           true
         });
@@ -1019,8 +1163,8 @@ mod analyzer_tests {
   #[test]
   fn test_disabled_analyzer() {
     let mut config = Config::default();
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.enabled = Some(false);
+    let analyzer_config =
+      crate::config::AnalyzerConfig { enabled: Some(false), ..Default::default() };
     config.analyzers.insert("buffer".to_string(), analyzer_config);
 
     let analyzer = Analyzer::new(&config, false, None);
@@ -1120,26 +1264,8 @@ mod analyzer_tests {
   #[test]
   fn test_trust_score_low_issues() {
     let issues = vec![
-      Issue {
-        issue_type: "test".to_string(),
-        line: 1,
-        message: "test".to_string(),
-        severity: Severity::Low,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      },
-      Issue {
-        issue_type: "test".to_string(),
-        line: 2,
-        message: "test".to_string(),
-        severity: Severity::Low,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      },
+      Issue::new("test_analyzer", "test", Severity::Low, "test.js").with_line(1),
+      Issue::new("test_analyzer", "test", Severity::Low, "test.js").with_line(2),
     ];
     let score = TrustScore::calculate(&issues);
     assert!(score.score > 95.0 && score.score < 100.0);
@@ -1149,16 +1275,8 @@ mod analyzer_tests {
 
   #[test]
   fn test_trust_score_critical_issues() {
-    let issues = vec![Issue {
-      issue_type: "test".to_string(),
-      line: 1,
-      message: "test".to_string(),
-      severity: Severity::Critical,
-      code: None,
-      analyzer: None,
-      id: None,
-      file: None,
-    }];
+    let issues =
+      vec![Issue::new("test_analyzer", "test", Severity::Critical, "test.js").with_line(1)];
     let score = TrustScore::calculate(&issues);
     assert!(score.score > 60.0 && score.score < 75.0);
     assert_eq!(score.critical_count, 1);
@@ -1168,36 +1286,9 @@ mod analyzer_tests {
   #[test]
   fn test_trust_score_mixed_issues() {
     let issues = vec![
-      Issue {
-        issue_type: "test".to_string(),
-        line: 1,
-        message: "test".to_string(),
-        severity: Severity::Critical,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      },
-      Issue {
-        issue_type: "test".to_string(),
-        line: 2,
-        message: "test".to_string(),
-        severity: Severity::High,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      },
-      Issue {
-        issue_type: "test".to_string(),
-        line: 3,
-        message: "test".to_string(),
-        severity: Severity::Medium,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      },
+      Issue::new("test_analyzer", "test", Severity::Critical, "test.js").with_line(1),
+      Issue::new("test_analyzer", "test", Severity::High, "test.js").with_line(2),
+      Issue::new("test_analyzer", "test", Severity::Medium, "test.js").with_line(3),
     ];
     let score = TrustScore::calculate(&issues);
     assert_eq!(score.critical_count, 1);
@@ -1210,15 +1301,8 @@ mod analyzer_tests {
   #[test]
   fn test_trust_score_minimum_zero() {
     let issues: Vec<Issue> = (0..50)
-      .map(|i| Issue {
-        issue_type: "test".to_string(),
-        line: i,
-        message: "test".to_string(),
-        severity: Severity::Critical,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
+      .map(|i| {
+        Issue::new("test_analyzer", "test", Severity::Critical, "test.js").with_line(i as usize)
       })
       .collect();
     let score = TrustScore::calculate(&issues);
@@ -1229,16 +1313,7 @@ mod analyzer_tests {
   #[test]
   fn test_trust_score_many_low_issues_stays_reasonable() {
     let issues: Vec<Issue> = (0..145)
-      .map(|i| Issue {
-        issue_type: "test".to_string(),
-        line: i,
-        message: "test".to_string(),
-        severity: Severity::Low,
-        code: None,
-        analyzer: None,
-        id: None,
-        file: None,
-      })
+      .map(|i| Issue::new("test_analyzer", "test", Severity::Low, "test.js").with_line(i as usize))
       .collect();
     let score = TrustScore::calculate(&issues);
     // With logarithmic scaling, 145 low issues should give penalty of ln(146)*1*3 ≈ 15

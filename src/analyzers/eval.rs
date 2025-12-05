@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest, VariableMap};
-use crate::util::{generate_issue_id, LineIndex};
+use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -96,6 +96,7 @@ impl AstVisitor for EvalVisitor<'_> {
   fn visit_call(&mut self, call: &CallInfo) {
     if let Some(ref callee) = call.callee_name {
       if callee == "eval" {
+        // Single issue for eval, severity depends on first arg content when available
         let line = call.line.max(1);
 
         let severity = if let Some(first_arg) = call.arguments.first() {
@@ -109,24 +110,18 @@ impl AstVisitor for EvalVisitor<'_> {
         };
 
         let message = "Use of eval() detected. This can execute arbitrary code.";
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message: message.to_string(),
-          severity,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        self.issues.push(
+          Issue::new(self.analyzer_name, message.to_string(), severity, self.file_path.to_string())
+            .with_package_name(self.package_name.unwrap_or("unknown"))
+            .with_line(line)
+            .with_code(self.line_index.get_line(line)),
+        );
       }
 
+      // Function constructor: either `Function(...)` or `new Function(...)`
       if callee == "Function" {
         let line = call.line.max(1);
-
         let severity = if let Some(first_arg) = call.arguments.first() {
           if let Some(content) = self.resolve_arg(first_arg) {
             self.get_severity_for_content(&content)
@@ -138,48 +133,30 @@ impl AstVisitor for EvalVisitor<'_> {
         };
 
         let message = "Use of Function() constructor detected. This can execute arbitrary code.";
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
 
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message: message.to_string(),
-          severity,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        self.issues.push(
+          Issue::new(self.analyzer_name, message.to_string(), severity, self.file_path.to_string())
+            .with_package_name(self.package_name.unwrap_or("unknown"))
+            .with_line(line)
+            .with_code(self.line_index.get_line(line)),
+        );
+
+        // Do not emit a secondary message for string arg; the single Function() constructor
+        // issue above is sufficient and matches test expectations.
       }
 
-      if (callee == "setTimeout" || callee == "setInterval") && !call.arguments.is_empty() {
-        if let Some(ArgInfo::StringLiteral(code)) = call.arguments.first() {
+      // setTimeout / setInterval with string argument should be flagged
+      if callee == "setTimeout" || callee == "setInterval" {
+        if let Some(ArgInfo::StringLiteral(_)) = call.arguments.first() {
           let line = call.line.max(1);
-          let severity = self.get_severity_for_content(code);
-
-          let message = format!(
-            "Use of {}() with string argument detected. Consider using a function instead.",
-            callee
+          let message =
+            format!("Use of {} with string argument detected. Use function instead.", callee);
+          self.issues.push(
+            Issue::new(self.analyzer_name, message, Severity::High, self.file_path.to_string())
+              .with_package_name(self.package_name.unwrap_or("unknown"))
+              .with_line(line)
+              .with_code(self.line_index.get_line(line)),
           );
-          let id = generate_issue_id(
-            self.analyzer_name,
-            self.file_path,
-            line,
-            &message,
-            self.package_name,
-          );
-
-          self.issues.push(Issue {
-            issue_type: self.analyzer_name.to_string(),
-            line,
-            message,
-            severity,
-            code: Some(self.line_index.get_line(line)),
-            analyzer: Some(self.analyzer_name.to_string()),
-            id: Some(id),
-            file: None,
-          });
         }
       }
 
@@ -192,24 +169,17 @@ impl AstVisitor for EvalVisitor<'_> {
             let line = call.line.max(1);
             let message = "Dynamic require() detected. Module path determined at runtime.";
 
-            let id = generate_issue_id(
-              self.analyzer_name,
-              self.file_path,
-              line,
-              message,
-              self.package_name,
+            self.issues.push(
+              Issue::new(
+                self.analyzer_name,
+                message.to_string(),
+                Severity::High,
+                self.file_path.to_string(),
+              )
+              .with_package_name(self.package_name.unwrap_or("unknown"))
+              .with_line(line)
+              .with_code(self.line_index.get_line(line)),
             );
-
-            self.issues.push(Issue {
-              issue_type: self.analyzer_name.to_string(),
-              line,
-              message: message.to_string(),
-              severity: Severity::High,
-              code: Some(self.line_index.get_line(line)),
-              analyzer: Some(self.analyzer_name.to_string()),
-              id: Some(id),
-              file: None,
-            });
           }
           _ => {}
         }

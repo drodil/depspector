@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
-use crate::util::generate_issue_id;
 
 #[derive(Default)]
 pub struct DormantAnalyzer;
@@ -73,18 +72,12 @@ impl PackageAnalyzer for DormantAnalyzer {
                     days_since_previous, prev_version
                 );
 
-        let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
-
-        issues.push(Issue {
-          issue_type: self.name().to_string(),
-          line: 0,
-          message,
-          severity: Severity::High,
-          code: None,
-          analyzer: Some(self.name().to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let npm_url = format!("https://www.npmjs.com/package/{}", context.name);
+        issues.push(
+          Issue::new(self.name(), message, Severity::High, "package.json")
+            .with_package_name(context.name)
+            .with_url(npm_url),
+        );
       }
     }
 

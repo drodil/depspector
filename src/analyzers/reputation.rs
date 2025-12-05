@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
-use crate::util::generate_issue_id;
 
 #[derive(Default)]
 pub struct ReputationAnalyzer;
@@ -51,18 +50,12 @@ impl PackageAnalyzer for ReputationAnalyzer {
     if metadata.maintainers.len() == 1 {
       let message = "Package has a single maintainer.".to_string();
 
-      let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
-
-      issues.push(Issue {
-        issue_type: self.name().to_string(),
-        line: 0,
-        message,
-        severity: Severity::Low,
-        code: None,
-        analyzer: Some(self.name().to_string()),
-        id: Some(id),
-        file: None,
-      });
+      let npm_url = format!("https://www.npmjs.com/package/{}", context.name);
+      issues.push(
+        Issue::new(self.name(), message, Severity::Low, "package.json")
+          .with_package_name(context.name)
+          .with_url(npm_url),
+      );
     }
 
     if let Some(ref publisher) = version_data.npm_user {
@@ -74,18 +67,12 @@ impl PackageAnalyzer for ReputationAnalyzer {
           publisher.name
         );
 
-        let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
-
-        issues.push(Issue {
-          issue_type: self.name().to_string(),
-          line: 0,
-          message,
-          severity: Severity::High,
-          code: None,
-          analyzer: Some(self.name().to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let npm_url = format!("https://www.npmjs.com/package/{}", context.name);
+        issues.push(
+          Issue::new(self.name(), message, Severity::High, "package.json")
+            .with_package_name(context.name)
+            .with_url(npm_url),
+        );
       }
     }
 

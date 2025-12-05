@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest, VariableMap};
-use crate::util::{generate_issue_id, LineIndex};
+use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -175,19 +175,14 @@ impl AstVisitor for ProcessVisitor<'_> {
           format!("Process spawning detected via child_process.{}", callee)
         };
 
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
-
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message,
-          severity,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let mut issue =
+          Issue::new(self.analyzer_name, message, severity, self.file_path.to_string())
+            .with_line(line)
+            .with_code(self.line_index.get_line(line));
+        if let Some(pkg) = self.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        self.issues.push(issue);
       }
 
       if object == "process" && callee == "binding" {
@@ -196,24 +191,18 @@ impl AstVisitor for ProcessVisitor<'_> {
             let message =
               "Low-level process spawning detected via process.binding('spawn_sync')".to_string();
 
-            let id = generate_issue_id(
+            let mut issue = Issue::new(
               self.analyzer_name,
-              self.file_path,
-              line,
-              &message,
-              self.package_name,
-            );
-
-            self.issues.push(Issue {
-              issue_type: self.analyzer_name.to_string(),
-              line,
               message,
-              severity: Severity::Critical,
-              code: Some(self.line_index.get_line(line)),
-              analyzer: Some(self.analyzer_name.to_string()),
-              id: Some(id),
-              file: None,
-            });
+              Severity::Critical,
+              self.file_path.to_string(),
+            )
+            .with_line(line)
+            .with_code(self.line_index.get_line(line));
+            if let Some(pkg) = self.package_name {
+              issue = issue.with_package_name(pkg);
+            }
+            self.issues.push(issue);
           }
         }
       }
@@ -249,19 +238,14 @@ impl AstVisitor for ProcessVisitor<'_> {
           format!("Process spawning detected via {}", callee)
         };
 
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
-
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message,
-          severity,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let mut issue =
+          Issue::new(self.analyzer_name, message, severity, self.file_path.to_string())
+            .with_line(line)
+            .with_code(self.line_index.get_line(line));
+        if let Some(pkg) = self.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        self.issues.push(issue);
       }
     }
   }
@@ -313,25 +297,16 @@ impl FileAnalyzer for ProcessAnalyzer {
       {
         let message =
           "Process spawning with shell: true detected (command injection risk)".to_string();
-        let id = generate_issue_id(
-          self.name(),
-          context.file_path.to_str().unwrap_or(""),
-          line_num + 1,
-          &message,
-          context.package_name,
-        );
 
         if !visitor.issues.iter().any(|i| i.line == line_num + 1 && i.message == message) {
-          visitor.issues.push(Issue {
-            issue_type: self.name().to_string(),
-            line: line_num + 1,
-            message,
-            severity: Severity::High,
-            code: Some(line.trim().to_string()),
-            analyzer: Some(self.name().to_string()),
-            id: Some(id),
-            file: None,
-          });
+          let file_path = context.file_path.to_str().unwrap_or("unknown");
+          let mut issue = Issue::new(self.name(), message, Severity::High, file_path.to_string())
+            .with_line(line_num + 1)
+            .with_code(line.trim().to_string());
+          if let Some(pkg) = context.package_name {
+            issue = issue.with_package_name(pkg);
+          }
+          visitor.issues.push(issue);
         }
       }
     }
@@ -614,8 +589,7 @@ spawn(config.binary, ['-c', 'echo hello']);
     let file_path = PathBuf::from("test.js");
 
     // Configure allowed commands
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.allowed_commands = Some(vec!["git".to_string(), "node".to_string()]);
+    let analyzer_config = crate::config::AnalyzerConfig { allowed_commands: Some(vec!["git".to_string(), "node".to_string()]), ..Default::default() };
     config.analyzers.insert("process".to_string(), analyzer_config);
 
     let source = r#"

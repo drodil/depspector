@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
-use crate::util::generate_issue_id;
 
 const POPULAR_PACKAGES: &[&str] = &[
   "react",
@@ -77,18 +76,10 @@ impl PackageAnalyzer for TyposquatAnalyzer {
       let message =
         "Package name contains non-ASCII characters (potential homoglyph attack)".to_string();
 
-      let id = generate_issue_id(self.name(), pkg_name, 0, &message, Some(pkg_name));
-
-      issues.push(Issue {
-        issue_type: self.name().to_string(),
-        line: 0,
-        message,
-        severity: Severity::High,
-        code: None,
-        analyzer: Some(self.name().to_string()),
-        id: Some(id),
-        file: None,
-      });
+      issues.push(
+        Issue::new(self.name(), message, Severity::High, "package.json")
+          .with_package_name(pkg_name),
+      );
     }
 
     let mut packages_to_check: Vec<&str> = POPULAR_PACKAGES.to_vec();
@@ -111,18 +102,10 @@ impl PackageAnalyzer for TyposquatAnalyzer {
           pkg_name, popular, distance
         );
 
-        let id = generate_issue_id(self.name(), pkg_name, 0, &message, Some(pkg_name));
-
-        issues.push(Issue {
-          issue_type: self.name().to_string(),
-          line: 0,
-          message,
-          severity: Severity::High,
-          code: None,
-          analyzer: Some(self.name().to_string()),
-          id: Some(id),
-          file: None,
-        });
+        issues.push(
+          Issue::new(self.name(), message, Severity::High, "package.json")
+            .with_package_name(pkg_name),
+        );
       }
     }
 

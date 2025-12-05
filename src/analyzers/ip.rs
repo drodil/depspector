@@ -1,5 +1,4 @@
 use super::{FileAnalyzer, FileContext, Issue, Severity};
-use crate::util::generate_issue_id;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::net::Ipv4Addr;
@@ -32,7 +31,7 @@ impl FileAnalyzer for IpAnalyzer {
     let config = context.config.get_analyzer_config(self.name());
     let allowed_ips = config.and_then(|c| c.allowed_ips.clone()).unwrap_or_default();
 
-    let file_path = context.file_path.to_str().unwrap_or("");
+    // file_path not needed here; other variables use `context.file_path` directly
 
     for string_lit in &ast.string_literals {
       let ip_str = &string_lit.value;
@@ -47,19 +46,15 @@ impl FileAnalyzer for IpAnalyzer {
             let line = string_lit.line.max(1);
             let message = format!("Hardcoded public IP address found: {}", ip_str);
 
-            let id =
-              generate_issue_id(self.name(), file_path, line, &message, context.package_name);
-
-            issues.push(Issue {
-              issue_type: self.name().to_string(),
-              line,
-              message,
-              severity: Severity::Medium,
-              code: Some(ip_str.to_string()),
-              analyzer: Some(self.name().to_string()),
-              id: Some(id),
-              file: None,
-            });
+            let file_path_str = context.file_path.to_str().unwrap_or("unknown");
+            let mut issue =
+              Issue::new(self.name(), message, Severity::Medium, file_path_str.to_string())
+                .with_line(line)
+                .with_code(ip_str.to_string());
+            if let Some(pkg) = context.package_name {
+              issue = issue.with_package_name(pkg);
+            }
+            issues.push(issue);
           }
         }
       }
@@ -176,8 +171,7 @@ mod tests {
     let analyzer = IpAnalyzer;
     let mut config = crate::config::Config::default();
 
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.allowed_ips = Some(vec!["8.8.8.8".to_string()]);
+    let analyzer_config = crate::config::AnalyzerConfig { allowed_ips: Some(vec!["8.8.8.8".to_string()]), ..Default::default() };
     config.analyzers.insert("ip".to_string(), analyzer_config);
 
     let file_path = PathBuf::from("test.js");

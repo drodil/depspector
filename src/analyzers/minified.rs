@@ -1,5 +1,4 @@
 use super::{FileAnalyzer, FileContext, Issue, Severity};
-use crate::util::generate_issue_id;
 
 pub struct MinifiedAnalyzer;
 
@@ -27,26 +26,16 @@ impl FileAnalyzer for MinifiedAnalyzer {
         line.len()
       );
 
-      let id = generate_issue_id(
-        self.name(),
-        context.file_path.to_str().unwrap_or(""),
-        line_num,
-        &message,
-        context.package_name,
-      );
-
       let preview: String = line.chars().take(80).collect();
 
-      issues.push(Issue {
-        issue_type: self.name().to_string(),
-        line: line_num,
-        message,
-        severity: Severity::Low,
-        code: Some(format!("{}...", preview)),
-        analyzer: Some(self.name().to_string()),
-        id: Some(id),
-        file: None,
-      });
+      let file_path = context.file_path.to_str().unwrap_or("unknown");
+      let mut issue = Issue::new(self.name(), message, Severity::Low, file_path.to_string())
+        .with_line(line_num)
+        .with_code(format!("{}...", preview));
+      if let Some(pkg) = context.package_name {
+        issue = issue.with_package_name(pkg);
+      }
+      issues.push(issue);
     }
 
     if context.source.len() > MIN_CODE_LENGTH {
@@ -56,24 +45,13 @@ impl FileAnalyzer for MinifiedAnalyzer {
       if ratio < MAX_WHITESPACE_RATIO {
         let message = "File has very low whitespace ratio. It appears to be minified.".to_string();
 
-        let id = generate_issue_id(
-          self.name(),
-          context.file_path.to_str().unwrap_or(""),
-          1,
-          &message,
-          context.package_name,
-        );
-
-        issues.push(Issue {
-          issue_type: self.name().to_string(),
-          line: 1,
-          message,
-          severity: Severity::Low,
-          code: None,
-          analyzer: Some(self.name().to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let file_path = context.file_path.to_str().unwrap_or("unknown");
+        let mut issue =
+          Issue::new(self.name(), message, Severity::Low, file_path.to_string()).with_line(1);
+        if let Some(pkg) = context.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        issues.push(issue);
       }
     }
 

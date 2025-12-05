@@ -3,7 +3,6 @@ use std::fs;
 use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
-use crate::util::generate_issue_id;
 
 const NATIVE_DEPS: &[&str] = &[
   "node-gyp",
@@ -31,36 +30,20 @@ impl PackageAnalyzer for NativeAnalyzer {
     if fs::metadata(&binding_gyp_path).is_ok() {
       let message = "Package contains native code (binding.gyp). Native modules can execute arbitrary code during build.";
 
-      let id = generate_issue_id(self.name(), context.name, 0, message, Some(context.name));
-
-      issues.push(Issue {
-        issue_type: self.name().to_string(),
-        line: 0,
-        message: message.to_string(),
-        severity: Severity::Medium,
-        code: None,
-        analyzer: Some(self.name().to_string()),
-        id: Some(id),
-        file: Some("binding.gyp".to_string()),
-      });
+      issues.push(
+        Issue::new(self.name(), message, Severity::Medium, "binding.gyp")
+          .with_package_name(context.name),
+      );
     }
 
     let cmake_path = context.path.join("CMakeLists.txt");
     if fs::metadata(&cmake_path).is_ok() {
       let message = "Package contains CMakeLists.txt. May build native code during installation.";
 
-      let id = generate_issue_id(self.name(), context.name, 0, message, Some(context.name));
-
-      issues.push(Issue {
-        issue_type: self.name().to_string(),
-        line: 0,
-        message: message.to_string(),
-        severity: Severity::Medium,
-        code: None,
-        analyzer: Some(self.name().to_string()),
-        id: Some(id),
-        file: Some("CMakeLists.txt".to_string()),
-      });
+      issues.push(
+        Issue::new(self.name(), message, Severity::Medium, "CMakeLists.txt")
+          .with_package_name(context.name),
+      );
     }
 
     let deps = context.package_json.get("dependencies");
@@ -73,18 +56,10 @@ impl PackageAnalyzer for NativeAnalyzer {
       if has_dep {
         let message = format!("Package depends on native build tool: \"{}\".", native_dep);
 
-        let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
-
-        issues.push(Issue {
-          issue_type: self.name().to_string(),
-          line: 0,
-          message,
-          severity: Severity::Medium,
-          code: None,
-          analyzer: Some(self.name().to_string()),
-          id: Some(id),
-          file: None,
-        });
+        issues.push(
+          Issue::new(self.name(), message, Severity::Medium, "package.json")
+            .with_package_name(context.name),
+        );
       }
     }
 

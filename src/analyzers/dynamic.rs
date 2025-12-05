@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest};
-use crate::util::{generate_issue_id, LineIndex};
+use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -38,19 +38,14 @@ impl AstVisitor for DynamicVisitor<'_> {
       {
         let message = format!("Dynamic code execution detected (vm.{})", callee);
 
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
-
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message,
-          severity: Severity::Critical,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let mut issue =
+          Issue::new(self.analyzer_name, message, Severity::Critical, self.file_path.to_string())
+            .with_line(line)
+            .with_code(self.line_index.get_line(line));
+        if let Some(pkg) = self.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        self.issues.push(issue);
       }
     }
 
@@ -68,19 +63,18 @@ impl AstVisitor for DynamicVisitor<'_> {
         if is_dynamic {
           let message = "Dynamic require detected (argument is not a string literal)";
 
-          let id =
-            generate_issue_id(self.analyzer_name, self.file_path, line, message, self.package_name);
-
-          self.issues.push(Issue {
-            issue_type: self.analyzer_name.to_string(),
-            line,
-            message: message.to_string(),
-            severity: Severity::Medium,
-            code: Some(self.line_index.get_line(line)),
-            analyzer: Some(self.analyzer_name.to_string()),
-            id: Some(id),
-            file: None,
-          });
+          let mut issue = Issue::new(
+            self.analyzer_name,
+            message.to_string(),
+            Severity::Medium,
+            self.file_path.to_string(),
+          )
+          .with_line(line)
+          .with_code(self.line_index.get_line(line));
+          if let Some(pkg) = self.package_name {
+            issue = issue.with_package_name(pkg);
+          }
+          self.issues.push(issue);
         }
       }
     }

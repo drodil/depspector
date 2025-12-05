@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, AstVisitor, CallInfo, NodeInterest, VariableMap};
-use crate::util::{generate_issue_id, LineIndex};
+use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -98,24 +98,12 @@ impl AstVisitor for FsVisitor<'_> {
             format!("File system operation detected: {} on {}", callee, path)
           };
 
-          let id = generate_issue_id(
-            self.analyzer_name,
-            self.file_path,
-            line,
-            &message,
-            self.package_name,
+          self.issues.push(
+            Issue::new(self.analyzer_name, message, severity, self.file_path.to_string())
+              .with_package_name(self.package_name.unwrap_or("unknown"))
+              .with_line(line)
+              .with_code(self.line_index.get_line(line)),
           );
-
-          self.issues.push(Issue {
-            issue_type: self.analyzer_name.to_string(),
-            line,
-            message,
-            severity,
-            code: Some(self.line_index.get_line(line)),
-            analyzer: Some(self.analyzer_name.to_string()),
-            id: Some(id),
-            file: None,
-          });
         }
       }
     }
@@ -267,8 +255,7 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.additional_dangerous_paths = Some(vec!["/custom/secret/path".to_string()]);
+    let analyzer_config = crate::config::AnalyzerConfig { additional_dangerous_paths: Some(vec!["/custom/secret/path".to_string()]), ..Default::default() };
     config.analyzers.insert("fs".to_string(), analyzer_config);
 
     let source = r#"fs.readFile('/custom/secret/path/data.json');"#;

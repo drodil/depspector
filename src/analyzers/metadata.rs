@@ -2,7 +2,7 @@ use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
 use crate::ast::{walk_ast_filtered, AstVisitor, CallInfo, NodeInterest};
-use crate::util::{generate_issue_id, LineIndex};
+use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
@@ -55,19 +55,12 @@ impl AstVisitor for MetadataVisitor<'_> {
         let line = call.line.max(1);
         let message = format!("Suspicious system metadata collection detected: os.{}()", callee);
 
-        let id =
-          generate_issue_id(self.analyzer_name, self.file_path, line, &message, self.package_name);
-
-        self.issues.push(Issue {
-          issue_type: self.analyzer_name.to_string(),
-          line,
-          message,
-          severity: Severity::Low,
-          code: Some(self.line_index.get_line(line)),
-          analyzer: Some(self.analyzer_name.to_string()),
-          id: Some(id),
-          file: None,
-        });
+        self.issues.push(
+          Issue::new(self.analyzer_name, message, Severity::Low, self.file_path.to_string())
+            .with_package_name(self.package_name.unwrap_or("unknown"))
+            .with_line(line)
+            .with_code(self.line_index.get_line(line)),
+        );
       }
     }
   }

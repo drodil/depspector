@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
-use crate::util::generate_issue_id;
 
 #[derive(Default)]
 pub struct CooldownAnalyzer;
@@ -56,18 +55,12 @@ impl PackageAnalyzer for CooldownAnalyzer {
         context.version, hours_threshold, hours_since_publish as f64
       );
 
-      let id = generate_issue_id(self.name(), context.name, 0, &message, Some(context.name));
-
-      issues.push(Issue {
-        issue_type: self.name().to_string(),
-        line: 0,
-        message,
-        severity: Severity::Medium,
-        code: None,
-        analyzer: Some(self.name().to_string()),
-        id: Some(id),
-        file: None,
-      });
+      let mut issue =
+        Issue::new(self.name(), message, Severity::Medium, "package.json".to_string());
+      if let Some(pkg_name) = Some(context.name) {
+        issue = issue.with_package_name(pkg_name);
+      }
+      issues.push(issue);
     }
 
     issues

@@ -1,5 +1,4 @@
 use super::{FileAnalyzer, FileContext, Issue, Severity};
-use crate::util::generate_issue_id;
 
 pub struct ObfuscationAnalyzer;
 
@@ -45,14 +44,6 @@ impl FileAnalyzer for ObfuscationAnalyzer {
           Severity::Low
         };
 
-        let id = generate_issue_id(
-          self.name(),
-          context.file_path.to_str().unwrap_or(""),
-          line_num + 1,
-          &message,
-          context.package_name,
-        );
-
         let preview = if long_string.chars().count() > 50 {
           let truncated: String = long_string.chars().take(50).collect();
           format!("{}...", truncated)
@@ -60,39 +51,32 @@ impl FileAnalyzer for ObfuscationAnalyzer {
           long_string.to_string()
         };
 
-        issues.push(Issue {
-          issue_type: self.name().to_string(),
-          line: line_num + 1,
-          message,
-          severity,
-          code: Some(preview),
-          analyzer: Some(self.name().to_string()),
-          id: Some(id),
-          file: None,
-        });
+        let file_path = context.file_path.to_str().unwrap_or("unknown");
+        let mut issue = Issue::new(self.name(), message, severity, file_path.to_string())
+          .with_line(line_num + 1)
+          .with_code(preview);
+        if let Some(pkg) = context.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        issues.push(issue);
       }
 
       if contains_number_array(line, 20) {
         let message = "Large array of numbers detected (potential obfuscated data)".to_string();
 
-        let id = generate_issue_id(
+        let file_path = context.file_path.to_str().unwrap_or("unknown");
+        let mut issue = Issue::new(
           self.name(),
-          context.file_path.to_str().unwrap_or(""),
-          line_num + 1,
-          &message,
-          context.package_name,
-        );
-
-        issues.push(Issue {
-          issue_type: self.name().to_string(),
-          line: line_num + 1,
           message,
-          severity: if line.len() > 10000 { Severity::High } else { Severity::Low },
-          code: Some(truncate_line(line, 80)),
-          analyzer: Some(self.name().to_string()),
-          id: Some(id),
-          file: None,
-        });
+          if line.len() > 10000 { Severity::High } else { Severity::Low },
+          file_path.to_string(),
+        )
+        .with_line(line_num + 1)
+        .with_code(truncate_line(line, 80));
+        if let Some(pkg) = context.package_name {
+          issue = issue.with_package_name(pkg);
+        }
+        issues.push(issue);
       }
     }
 
@@ -283,8 +267,8 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let mut analyzer_config = crate::config::AnalyzerConfig::default();
-    analyzer_config.min_string_length = Some(50);
+    let analyzer_config =
+      crate::config::AnalyzerConfig { min_string_length: Some(50), ..Default::default() };
     config.analyzers.insert("obfuscation".to_string(), analyzer_config);
 
     let source = format!(r#"const x = "{}";"#, "a".repeat(60));
