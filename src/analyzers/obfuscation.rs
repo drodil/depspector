@@ -149,29 +149,52 @@ fn contains_number_array(line: &str, min_count: usize) -> bool {
     return false;
   }
 
-  // Quick heuristic: if not enough commas, it can't have enough elements
   if line.chars().filter(|&c| c == ',').count() < min_count {
     return false;
   }
 
-  let mut number_count = 0;
   let mut in_array = false;
+  let mut bracket_content = String::new();
 
   for c in line.chars() {
     if c == '[' {
       in_array = true;
-      number_count = 0;
+      bracket_content.clear();
     } else if c == ']' {
-      if in_array && number_count >= min_count {
+      if in_array && is_numeric_array(&bracket_content, min_count) {
         return true;
       }
       in_array = false;
-    } else if in_array && c == ',' {
-      number_count += 1;
+    } else if in_array {
+      bracket_content.push(c);
     }
   }
 
   false
+}
+
+fn is_numeric_array(content: &str, min_count: usize) -> bool {
+  if content.contains("case:") || content.contains("return") {
+    return false;
+  }
+
+  let parts: Vec<&str> = content.split(',').collect();
+
+  if parts.len() < min_count {
+    return false;
+  }
+
+  let numeric_count =
+    parts.iter().map(|p| p.trim()).filter(|p| !p.is_empty() && is_numeric_value(p)).count();
+
+  (numeric_count as f64 / parts.len() as f64) > 0.8 && numeric_count >= min_count
+}
+
+fn is_numeric_value(s: &str) -> bool {
+  let trimmed = s.trim();
+  trimmed.parse::<i64>().is_ok()
+    || trimmed.parse::<f64>().is_ok()
+    || (trimmed.starts_with("0x") && trimmed[2..].chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 fn truncate_line(line: &str, max_len: usize) -> String {
@@ -399,5 +422,53 @@ mod tests {
 
     assert_eq!(issues.len(), 1, "Should flag HTML data URIs which can contain scripts");
     assert_eq!(issues[0].severity, Severity::Medium, "HTML data URIs should have medium severity");
+  }
+
+  #[test]
+  fn test_ignores_switch_statements() {
+    let analyzer = ObfuscationAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source =
+      r#";case 118:return"\v";case 102:return"\f";case 114:return"\r";case 39:return"'";"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(
+      issues.is_empty() || !issues.iter().any(|i| i.message.contains("Large array of numbers")),
+      "Switch statements should not be flagged as numeric arrays"
+    );
+  }
+
+  #[test]
+  fn test_still_detects_actual_number_arrays() {
+    let analyzer = ObfuscationAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let numbers = (0..30).map(|n| n.to_string()).collect::<Vec<_>>().join(",");
+    let source = format!("const arr = [{}];", numbers);
+
+    let context = FileContext {
+      source: &source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(!issues.is_empty(), "Actual numeric arrays should still be detected");
+    assert!(issues.iter().any(|i| i.message.contains("array of numbers")));
   }
 }
