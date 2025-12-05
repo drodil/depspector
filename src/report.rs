@@ -139,17 +139,24 @@ impl Reporter {
   fn write_csv(&self, results: &[AnalysisResult], path: &Path) -> std::io::Result<()> {
     let mut wtr = csv::Writer::from_path(path)?;
 
-    // Write header
     wtr
       .write_record(["package", "file", "line", "severity", "type", "message", "code", "id"])
       .map_err(|e| std::io::Error::other(e.to_string()))?;
 
-    // Write each issue as a row
     for result in results {
       let package = result.package.as_deref().unwrap_or("unknown");
 
       for issue in &result.issues {
-        let file_path = if issue.file.is_empty() { &result.package_path } else { &issue.file };
+        let file_path = if issue.file.is_empty() {
+          result.package_path.clone()
+        } else if issue.file == "package.json"
+          || (!issue.file.contains(std::path::MAIN_SEPARATOR) && !issue.file.contains('/'))
+        {
+          let pkg_path = std::path::Path::new(&result.package_path);
+          pkg_path.join(&issue.file).to_string_lossy().to_string()
+        } else {
+          issue.file.clone()
+        };
         let severity = match issue.severity {
           Severity::Critical => "critical",
           Severity::High => "high",
@@ -160,7 +167,7 @@ impl Reporter {
         wtr
           .write_record([
             package,
-            file_path,
+            &file_path,
             &issue.line.to_string(),
             severity,
             &issue.analyzer,
@@ -303,8 +310,17 @@ impl Reporter {
             continue;
           }
 
-          let file_path = if issue.file.is_empty() { &result.package_path } else { &issue.file };
-          let display_path = make_path_relative(file_path, ctx.working_dir);
+          let file_path = if issue.file.is_empty() {
+            result.package_path.clone()
+          } else if issue.file == "package.json"
+            || (!issue.file.contains(std::path::MAIN_SEPARATOR) && !issue.file.contains('/'))
+          {
+            let pkg_path = std::path::Path::new(&result.package_path);
+            pkg_path.join(&issue.file).to_string_lossy().to_string()
+          } else {
+            issue.file.clone()
+          };
+          let display_path = make_path_relative(&file_path, ctx.working_dir);
 
           let key = (issue.message.clone(), issue.analyzer.clone(), issue.get_id());
           grouped_issues.entry(key).or_default().push((

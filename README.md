@@ -383,6 +383,7 @@ Example:
 | `minified`    | Identifies minified or obfuscated code.                                                                                   |
 | `ip`          | Detects hardcoded public IP addresses. Ignores private ranges.                                                            |
 | `base64`      | Flags large Base64 blobs. Configurable `minBufferLength`.                                                                 |
+| `license`     | Detects packages using restrictive or problematic licenses. Supports `allowedLicenses` whitelist.                         |
 
 ### CVE Analyzer Configuration
 
@@ -784,9 +785,51 @@ eval("1 + 1");
 
 ### Process Analyzer Configuration
 
-The `process` analyzer detects child process spawning (`exec`, `spawn`, `fork`, etc.) and low-level process binding calls. It uses **data flow analysis** to resolve the command being executed, even when stored in variables or object properties.
+### License Analyzer Configuration
 
-**Data Flow Examples:**
+The `license` analyzer checks package licenses for compliance with your organization's policies. It identifies packages using restrictive licenses that require derivative works to be published under the same license (copyleft), as well as licenses requiring source attribution.
+
+**Problematic License Categories:**
+
+- **Restrictive (High Severity)**: Require derivative works to be open source
+  - GPL (all versions): `GPL`, `GPL-2.0`, `GPL-3.0`, `GPL-3.0-or-later`
+  - AGPL: `AGPL`, `AGPL-3.0`, `AGPL-3.0-or-later`
+  - SSPL: Server Side Public License
+  - EUPL: European Union Public License v1.2+
+
+- **Moderate (Medium Severity)**: Require source code attribution
+  - MPL: `MPL`, `MPL-2.0`
+  - CDDL: Common Development and Distribution License
+  - CPAL: Common Public Attribution License
+
+**Allowed Licenses (No Issues):**
+
+- MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, and other permissive licenses
+
+You can whitelist specific licenses that you've approved for use:
+
+```json
+{
+  "analyzers": {
+    "license": {
+      "allowedLicenses": ["GPL-3.0", "custom-commercial-license"]
+    }
+  }
+}
+```
+
+| Property          | Type     | Default | Description                                             |
+| ----------------- | -------- | ------- | ------------------------------------------------------- |
+| `allowedLicenses` | string[] | `[]`    | Licenses to allow despite being flagged as restrictive. |
+
+**Example Output:**
+
+```
+HIGH [license] (ID: PKG-LICENSE-ABC123): Package uses GPL-3.0 license which requires
+derivative works to be published under the same license.
+  package.json:5
+    "license": "GPL-3.0"
+```
 
 ```javascript
 // Direct call - detected

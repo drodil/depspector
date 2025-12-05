@@ -29,6 +29,7 @@ pub mod cooldown;
 pub mod cve;
 pub mod deprecated;
 pub mod dormant;
+pub mod license;
 pub mod native;
 pub mod reputation;
 pub mod scripts;
@@ -45,6 +46,7 @@ pub use env::EnvAnalyzer;
 pub use eval::EvalAnalyzer;
 pub use fs::FsAnalyzer;
 pub use ip::IpAnalyzer;
+pub use license::LicenseAnalyzer;
 pub use metadata::MetadataAnalyzer;
 pub use minified::MinifiedAnalyzer;
 pub use native::NativeAnalyzer;
@@ -573,6 +575,10 @@ impl Analyzer {
     if should_include("typosquat") {
       package_analyzers.push(Box::new(TyposquatAnalyzer));
       active_analyzers.push("typosquat".to_string());
+    }
+    if should_include("license") {
+      package_analyzers.push(Box::new(LicenseAnalyzer));
+      active_analyzers.push("license".to_string());
     }
 
     if !offline {
@@ -1171,7 +1177,7 @@ mod analyzer_tests {
     let analyzer = Analyzer::new(&config, false, None);
 
     assert_eq!(analyzer.file_analyzer_count(), 14);
-    assert_eq!(analyzer.package_analyzer_count(), 8);
+    assert_eq!(analyzer.package_analyzer_count(), 9);
   }
 
   #[test]
@@ -1180,7 +1186,7 @@ mod analyzer_tests {
     let analyzer = Analyzer::new(&config, true, None);
 
     assert!(analyzer.is_offline());
-    assert_eq!(analyzer.package_analyzer_count(), 3);
+    assert_eq!(analyzer.package_analyzer_count(), 4);
   }
 
   #[test]

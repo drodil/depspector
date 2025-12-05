@@ -94,7 +94,8 @@ impl PackageAnalyzer for ScriptsAnalyzer {
       .and_then(|c| c.allowed_commands.clone())
       .unwrap_or_default();
 
-    let package_json_str = serde_json::to_string(&context.package_json).unwrap_or_default();
+    // Use pretty print to preserve line structure for line number detection
+    let package_json_str = serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
 
     for (event, script_val) in scripts_obj.iter() {
       if let Some(script_str) = script_val.as_str() {

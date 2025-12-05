@@ -72,7 +72,7 @@ impl PackageAnalyzer for TyposquatAnalyzer {
     let additional_packages: Vec<String> =
       config.and_then(|c| c.popular_packages.clone()).unwrap_or_default();
 
-    let package_json_str = serde_json::to_string(&context.package_json).unwrap_or_default();
+    let package_json_str = serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
 
     if !pkg_name.is_ascii() {
       let message =

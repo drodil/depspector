@@ -72,6 +72,8 @@ pub struct AnalyzerConfig {
   pub popular_packages: Option<Vec<String>>,
   #[serde(default)]
   pub allowed_ips: Option<Vec<String>>,
+  #[serde(default)]
+  pub allowed_licenses: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

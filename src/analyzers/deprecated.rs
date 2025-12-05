@@ -51,7 +51,8 @@ impl PackageAnalyzer for DeprecatedAnalyzer {
           context.name, context.version, deprecation_msg
         );
 
-        let package_json_str = serde_json::to_string(&context.package_json).unwrap_or_default();
+        let package_json_str =
+          serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
         let line = crate::util::find_line_in_json(&package_json_str, "dependencies")
           .or_else(|| crate::util::find_line_in_json(&package_json_str, "devDependencies"))
           .unwrap_or(0);
