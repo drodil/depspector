@@ -8,6 +8,7 @@ use napi::bindgen_prelude::{Error as NapiError, Result};
 use spinoff::{spinners, Color, Spinner};
 use std::path::PathBuf;
 
+pub mod ai_verifier;
 pub mod analyzers;
 pub mod ast;
 pub mod benchmark;
@@ -121,7 +122,7 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     }
   }
 
-  let spinner = if !cli.verbose.is_present() && !cli.benchmark {
+  let mut spinner = if !cli.verbose.is_present() && !cli.benchmark {
     let normalized_dir = normalize_path(&working_dir.to_string_lossy());
     Some(Spinner::new(
       spinners::Dots,
@@ -173,6 +174,17 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   let mut analyzed_results = analyzer.analyze_packages(&analyze_ctx).await?;
   results.append(&mut analyzed_results);
 
+  if !cli.offline {
+    if let Some(s) = spinner.as_mut() {
+      s.update_text("Verifying packages with AI...");
+    } else {
+      info!("Verifying packages with AI...");
+    }
+    let ai_verifier = crate::ai_verifier::AiVerifier::new(config.ai.clone())
+      .with_benchmark(benchmark_collector.clone());
+    results = ai_verifier.verify(results).await;
+  }
+
   let duration = start_time.elapsed();
   if let Some(mut s) = spinner {
     s.stop();
@@ -182,7 +194,8 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   let report_ctx = ReportContext::new(report_level, cli.only_new, &working_dir)
     .with_json_output(cli.json.as_deref())
     .with_yaml_output(cli.yaml.as_deref())
-    .with_csv_output(cli.csv.as_deref());
+    .with_csv_output(cli.csv.as_deref())
+    .with_toon_output(cli.toon.as_deref());
 
   reporter.report(&results, &report_ctx).map_err(|e| NapiError::from_reason(e.to_string()))?;
 
@@ -255,6 +268,8 @@ struct Cli {
   yaml: Option<PathBuf>,
   #[clap(long, help = "Output report as CSV to file")]
   csv: Option<PathBuf>,
+  #[clap(long, help = "Output report as TOON to file")]
+  toon: Option<PathBuf>,
   #[clap(long, help = "Minimum severity level to report (critical, high, medium, low, info)")]
   report_level: Option<String>,
   #[clap(long, help = "Show detailed benchmark/timing information for each analyzer")]

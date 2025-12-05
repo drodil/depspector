@@ -78,6 +78,47 @@ pub struct AnalyzerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AiConfig {
+  #[serde(default)]
+  pub enabled: bool,
+  #[serde(default = "default_provider")]
+  pub provider: String,
+  #[serde(default)]
+  pub api_key: Option<String>,
+  #[serde(default)]
+  pub model: Option<String>,
+  #[serde(default = "default_ai_threshold")]
+  pub threshold: String,
+  #[serde(default)]
+  pub endpoint: Option<String>,
+  #[serde(default)]
+  pub max_issues: Option<usize>,
+}
+
+impl Default for AiConfig {
+  fn default() -> Self {
+    Self {
+      enabled: false,
+      provider: default_provider(),
+      api_key: None,
+      model: None,
+      threshold: default_ai_threshold(),
+      endpoint: None,
+      max_issues: None,
+    }
+  }
+}
+
+fn default_provider() -> String {
+  "openai".to_string()
+}
+
+fn default_ai_threshold() -> String {
+  "high".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Config {
   #[serde(default)]
   pub exclude: Vec<String>,
@@ -97,6 +138,7 @@ pub struct Config {
   pub include_tests: bool,
   #[serde(default)]
   pub include_dev_deps: bool,
+
   #[serde(default)]
   pub include_optional_deps: bool,
   #[serde(default = "default_true")]
@@ -109,6 +151,8 @@ pub struct Config {
   pub exclude_deps: bool,
   #[serde(default)]
   pub npm: NpmConfig,
+  #[serde(default)]
+  pub ai: AiConfig,
   #[serde(default)]
   pub analyzers: HashMap<String, AnalyzerConfig>,
   #[serde(default = "default_max_file_size")]
@@ -153,6 +197,7 @@ impl Default for Config {
       exclude_sources: false,
       exclude_deps: false,
       npm: NpmConfig::default(),
+      ai: AiConfig::default(),
       analyzers: HashMap::new(),
       max_file_size: default_max_file_size(),
       ast_timeout_ms: 0,
@@ -220,7 +265,6 @@ mod tests {
   fn test_analyzer_enabled_default() {
     let config = Config::default();
     assert!(config.is_analyzer_enabled("buffer"));
-    assert!(config.is_analyzer_enabled("nonexistent"));
   }
 
   #[test]

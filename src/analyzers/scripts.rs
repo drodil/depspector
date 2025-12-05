@@ -94,17 +94,14 @@ impl PackageAnalyzer for ScriptsAnalyzer {
       .and_then(|c| c.allowed_commands.clone())
       .unwrap_or_default();
 
-    // Use pretty print to preserve line structure for line number detection
     let package_json_str = serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
 
     for (event, script_val) in scripts_obj.iter() {
       if let Some(script_str) = script_val.as_str() {
-        // Skip if script is explicitly allowed
         if allowed_scripts.contains(&event.to_string()) {
           continue;
         }
 
-        // Check if it's a lifecycle event or other suspicious script patterns
         let is_lifecycle = SUSPICIOUS_LIFECYCLE_EVENTS.contains(&event.as_str());
         let is_suspicious_by_default = is_lifecycle
           || event.starts_with("pre")
@@ -113,7 +110,6 @@ impl PackageAnalyzer for ScriptsAnalyzer {
           || event == "install"
           || event == "uninstall";
 
-        // Only flag lifecycle/pre/post scripts as requiring review
         if !is_suspicious_by_default {
           continue;
         }
@@ -153,7 +149,7 @@ impl ScriptsAnalyzer {
   fn get_severity_for_script(script: &str) -> Severity {
     let script_lower = script.to_lowercase();
 
-    // Critical: Remote code execution patterns
+    // High: Remote code execution patterns
     if script_lower.contains("curl ")
       || script_lower.contains("wget ")
       || script_lower.contains("://")
@@ -165,21 +161,21 @@ impl ScriptsAnalyzer {
       || script_lower.contains("`")
       || script_lower.contains("$(")
     {
-      return Severity::Critical;
+      return Severity::High;
     }
 
-    // High: Direct shell or script execution
+    // Medium: Direct shell or script execution
     if script_lower.contains("bash ")
       || script_lower.contains("sh ")
       || script_lower.contains("node ")
       || script_lower.contains(".sh")
       || script_lower.contains(".js")
     {
-      return Severity::High;
+      return Severity::Medium;
     }
 
-    // Medium: other lifecycle scripts
-    Severity::Medium
+    // Low: other lifecycle scripts
+    Severity::Low
   }
 }
 

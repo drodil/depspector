@@ -69,7 +69,7 @@ impl PackageAnalyzer for ReputationAnalyzer {
             },
           );
 
-        let severity = if publisher_has_history { Severity::Medium } else { Severity::High };
+        let severity = if publisher_has_history { Severity::Low } else { Severity::Medium };
 
         let message = format!(
           "Version published by user '{}' who is not listed as a maintainer.",

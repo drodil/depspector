@@ -282,6 +282,41 @@ Or with basic authentication:
 | `username` | string | Username for basic authentication                        |
 | `password` | string | Password for basic authentication                        |
 
+## AI Verification (Experimental)
+
+Depspector can use AI (OpenAI or Google Gemini) to automatically verify reported issues and filter out false positives. This significantly reduces noise by analyzing the code context around each finding.
+
+### Configuration
+
+Add the `ai` section to your `.depspectorrc`:
+
+```json
+{
+  "ai": {
+    "enabled": true,
+    "provider": "openai",
+    "apiKey": "your-api-key",
+    "model": "gpt-4o-mini", // Optional, defaults to gpt-4o-mini
+    "threshold": "high", // Only verify High and Critical issues
+    "endpoint": "https://your-custom-openai-instance/v1/chat/completions", // Optional, for self-hosted LLMs
+    "maxIssues": 10 // Optional, limit the number of issues verified (prioritizing critical)
+  }
+}
+```
+
+| Property    | Type   | Default    | Description                                                                 |
+| ----------- | ------ | ---------- | --------------------------------------------------------------------------- |
+| `enabled`   | bool   | `false`    | Enable AI verification.                                                     |
+| `provider`  | string | `"openai"` | AI provider: `"openai"` or `"gemini"`.                                      |
+| `apiKey`    | string | `null`     | API key. Can also be set via `OPENAI_API_KEY` or `GEMINI_API_KEY` env vars. |
+| `model`     | string | (auto)     | Model to use (e.g., `gpt-4o-mini`, `gemini-1.5-flash`).                     |
+| `threshold` | string | `"high"`   | Minimum severity to verify. Low severity issues are skipped to save tokens. |
+| `endpoint`  | string | (auto)     | Custom endpoint for OpenAI or Gemini.                                       |
+| `maxIssues` | number | `10`       | Maximum number of issues to verify.                                         |
+
+> [!CAUTION]
+> **Privacy Warning**: When AI verification is enabled, snippets of your code (including the flagged lines and surrounding context) are sent to the configured third-party AI provider. Do not enable this on codebases with strict data egress policies without review.
+
 ## Post-Install Hook
 
 To automatically scan dependencies after every install, add this to your `package.json`:

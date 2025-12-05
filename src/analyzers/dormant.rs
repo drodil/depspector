@@ -67,13 +67,7 @@ impl PackageAnalyzer for DormantAnalyzer {
       let days_since_previous = (current_date - *prev_date).num_days();
 
       if days_since_previous > days_threshold as i64 {
-        let severity = if days_since_previous > 730 {
-          Severity::Critical
-        } else if days_since_previous > 365 {
-          Severity::High
-        } else {
-          Severity::Medium
-        };
+        let severity = if days_since_previous > 3 * 365 { Severity::Medium } else { Severity::Low };
 
         let message = format!(
           "Package was dormant for {} days before this update (previous: {}). Sudden update after long dormancy is suspicious.",

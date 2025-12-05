@@ -1,4 +1,9 @@
 {
   "cacheDir": "./.cache",
-  "exitWithFailureOnLevel": "off"
+  "exitWithFailureOnLevel": "off",
+  "ai": {
+    "enabled": true,
+    "provider": "gemini",
+    "maxIssues": 100
+  }
 }

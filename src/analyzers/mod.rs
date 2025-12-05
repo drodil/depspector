@@ -113,7 +113,13 @@ pub struct Issue {
   #[serde(skip)]
   package_version: Option<String>,
   #[serde(skip)]
-  id_generated: bool,
+  pub id_generated: bool,
+  #[serde(default)]
+  pub is_false_positive: bool,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_confidence: Option<f32>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_reason: Option<String>,
 }
 
 impl Issue {
@@ -135,6 +141,9 @@ impl Issue {
       package_name: None,
       package_version: None,
       id_generated: false,
+      is_false_positive: false,
+      ai_confidence: None,
+      ai_reason: None,
     }
   }
 

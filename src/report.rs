@@ -54,6 +54,7 @@ pub struct ReportContext<'a> {
   pub json_output: Option<&'a Path>,
   pub yaml_output: Option<&'a Path>,
   pub csv_output: Option<&'a Path>,
+  pub toon_output: Option<&'a Path>,
   pub working_dir: &'a Path,
 }
 
@@ -65,6 +66,7 @@ impl<'a> ReportContext<'a> {
       json_output: None,
       yaml_output: None,
       csv_output: None,
+      toon_output: None,
       working_dir,
     }
   }
@@ -83,6 +85,11 @@ impl<'a> ReportContext<'a> {
     self.csv_output = path;
     self
   }
+
+  pub fn with_toon_output(mut self, path: Option<&'a Path>) -> Self {
+    self.toon_output = path;
+    self
+  }
 }
 
 pub struct Reporter;
@@ -98,8 +105,12 @@ impl Reporter {
     let filtered: Vec<_> = results
       .iter()
       .filter(|r| !ctx.only_new || !r.is_from_cache)
+      .map(|r| {
+        let mut r = r.clone();
+        r.issues.retain(|i| !i.is_false_positive);
+        r
+      })
       .filter(|r| r.issues.iter().any(|i| i.severity >= min_severity))
-      .cloned()
       .collect();
 
     if let Some(json_path) = ctx.json_output {
@@ -114,7 +125,12 @@ impl Reporter {
       self.write_csv(&filtered, csv_path)?;
     }
 
+    if let Some(toon_path) = ctx.toon_output {
+      self.write_toon(&filtered, toon_path)?;
+    }
+
     self.print_console(&filtered, min_severity, ctx);
+    self.print_false_positives(results, ctx);
 
     Ok(())
   }
@@ -133,6 +149,14 @@ impl Reporter {
     let mut file = File::create(path)?;
     file.write_all(yaml.as_bytes())?;
     println!("{} {}", "YAML report written to:".green(), path.display());
+    Ok(())
+  }
+
+  fn write_toon(&self, results: &[AnalysisResult], path: &Path) -> std::io::Result<()> {
+    let toon = serde_toon::to_string(results).map_err(|e| std::io::Error::other(e.to_string()))?;
+    let mut file = File::create(path)?;
+    file.write_all(toon.as_bytes())?;
+    println!("{} {}", "TOON report written to:".green(), path.display());
     Ok(())
   }
 
@@ -464,6 +488,66 @@ impl Reporter {
 
     for (name, versions) in dedup_candidates {
       println!("  {} - versions: {}", name.cyan(), versions.join(", ").yellow());
+    }
+  }
+
+  fn print_false_positives(&self, results: &[AnalysisResult], ctx: &ReportContext) {
+    let mut results_with_fp: Vec<&AnalysisResult> =
+      results.iter().filter(|r| r.issues.iter().any(|i| i.is_false_positive)).collect();
+
+    if results_with_fp.is_empty() {
+      return;
+    }
+
+    results_with_fp.sort_by(|a, b| {
+      let pkg_a = a.package.as_deref().unwrap_or("");
+      let pkg_b = b.package.as_deref().unwrap_or("");
+      pkg_a.cmp(pkg_b)
+    });
+
+    println!();
+    println!("{}", "🤖 AI Identified False Positives:".magenta().bold());
+    println!("{}", "  These issues were flagged as false positives by AI verification:".dimmed());
+
+    for result in results_with_fp {
+      let pkg = result.package.as_deref().unwrap_or("unknown");
+      let version = result.version.as_deref().unwrap_or("unknown");
+      let location = format!("{}@{}", pkg, version);
+
+      println!();
+      println!("📦 {}", location.cyan().bold());
+
+      for issue in &result.issues {
+        if !issue.is_false_positive {
+          continue;
+        }
+
+        let confidence_str = if let Some(conf) = issue.ai_confidence {
+          let percent = (conf * 100.0) as u32;
+          format!("{}% confidence", percent)
+        } else {
+          "AI Verified".to_string()
+        };
+
+        println!(
+          "  {} - {} ({})",
+          issue.message.white(),
+          issue.analyzer.cyan(),
+          confidence_str.green()
+        );
+
+        let file_path =
+          if issue.file.is_empty() { result.package_path.clone() } else { issue.file.clone() };
+
+        let display_path = make_path_relative(&file_path, ctx.working_dir);
+        let line_display = if issue.line > 0 { format!(":{}", issue.line) } else { "".to_string() };
+        println!("    File: {}{}", display_path.dimmed(), line_display.dimmed());
+
+        if let Some(reason) = &issue.ai_reason {
+          println!("    Reason: {}", reason.italic());
+        }
+        println!();
+      }
     }
   }
 
