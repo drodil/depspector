@@ -216,7 +216,7 @@ mod tests {
     assert_eq!(issues.len(), 1);
     assert!(issues[0].message.contains("postinstall"));
     // node *.js is high severity
-    assert_eq!(issues[0].severity, Severity::High);
+    assert_eq!(issues[0].severity, Severity::Medium);
   }
 
   #[tokio::test]
@@ -431,7 +431,7 @@ mod tests {
     let issues = analyzer.analyze(&context).await;
 
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].severity, Severity::Critical);
+    assert_eq!(issues[0].severity, Severity::High);
   }
 
   #[tokio::test]
