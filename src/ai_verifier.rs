@@ -106,16 +106,6 @@ impl AiVerifier {
 
         let mut candidate = issue.clone();
         candidate.code = Some(code_snippet);
-        // Ensure ID is available (it should be since get_id() generates it if needed on read, but here we work on a clone)
-        // Wait, issue.get_id() returns the ID and generates it if necessary but it works on &self.
-        // It does NOT update the struct fields if it's not mut.
-        // However, Issue struct has `id` field. `get_id` logic: `if self.id_generated return self.id`.
-        // If not generated, it COMPUTES it and returns it, but doesn't save it unless we call something that takes &mut self?
-        // Ah, `get_id` in `Issue` implementation shown in step 152 takes `&self` and returns `String` but it does NOT mutate `self.id`.
-        // Wait! `Issue::get_id` in step 152:
-        // `pub fn get_id(&self) -> String { ... }`
-        // It computes ID every time if id_generated is false!
-        // So for the candidate, we should set the ID explicitly if we want it serialized.
         candidate.id = issue.get_id();
 
         candidates.push(candidate);
@@ -140,7 +130,6 @@ impl AiVerifier {
     let max_batch_chars = self.get_max_batch_chars();
 
     for candidate in candidates {
-      // Approximate length
       let entry_len = candidate.code.as_ref().map(|c| c.len()).unwrap_or(0) + 200;
 
       if current_chars + entry_len > max_batch_chars && !current_batch.is_empty() {

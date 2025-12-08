@@ -223,13 +223,11 @@ impl PackageCache {
         }
       }
     }
-    // Also clear in-memory entries
     self.data.write().unwrap().packages.clear();
     self.data.write().unwrap().ai.clear();
     Ok(())
   }
 
-  // AI Cache Methods
   pub fn get_ai(&self, issue_id: &str) -> Option<AiCacheEntry> {
     let data = self.data.read().unwrap();
     data.ai.get(issue_id).cloned()
@@ -279,13 +277,11 @@ mod tests {
 
     let cache = PackageCache::new(cache_dir.to_str().unwrap(), cwd, node_modules).unwrap();
 
-    // AI Cache test
     cache.set_ai("ISSUE-1", true, Some("safe".to_string()), Some(0.95)).unwrap();
     let entry = cache.get_ai("ISSUE-1").unwrap();
     assert!(entry.is_false_positive);
     assert_eq!(entry.reason, Some("safe".to_string()));
 
-    // Persistence test
     let cache2 = PackageCache::new(cache_dir.to_str().unwrap(), cwd, node_modules).unwrap();
     let entry2 = cache2.get_ai("ISSUE-1").unwrap();
     assert!(entry2.is_false_positive);
