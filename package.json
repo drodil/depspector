@@ -29,6 +29,7 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm --gh-release",
+    "napi": "napi",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
