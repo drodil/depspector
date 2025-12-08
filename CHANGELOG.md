@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.13](https://github.com/drodil/depspector/compare/v0.0.12...v0.0.13) (2025-12-08)
+
+
+### Bug Fixes
+
+* use napi for gh releases ([a87796d](https://github.com/drodil/depspector/commit/a87796d6a8420c17c95d985effb93a45309a9ec7))
+
 ### [0.0.12](https://github.com/drodil/depspector/compare/v0.0.11...v0.0.12) (2025-12-08)
 
 
