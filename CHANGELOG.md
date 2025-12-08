@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.12](https://github.com/drodil/depspector/compare/v0.0.11...v0.0.12) (2025-12-08)
+
+
+### Features
+
+* **ai:** add cache support for ai results ([1ed8ea3](https://github.com/drodil/depspector/commit/1ed8ea336195f908955ebb4955ba2725f0f38e39))
+* **ai:** initial implementation ([d4cef06](https://github.com/drodil/depspector/commit/d4cef068fe28b7256d812cc2257fb84b14e5948e))
+
+
+### Bug Fixes
+
+* **ci:** cargo lock update ([693045e](https://github.com/drodil/depspector/commit/693045e6017a8000fc1e214eb76a32e6e02d8421))
+* tests failing for scripts analyzer ([ba7eadd](https://github.com/drodil/depspector/commit/ba7eaddd0230fec12c5839da6cd3972c7371d1c9))
+
 ### [0.0.11](https://github.com/drodil/depspector/compare/v0.0.10...v0.0.11) (2025-12-05)
 
 
