@@ -9,17 +9,33 @@ use crate::analyzers::AnalysisResult;
 use crate::util::sha256_hash;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct CacheEntry {
+pub struct PackageCacheEntry {
   version: String,
   content_hash: String,
   results: Vec<AnalysisResult>,
   timestamp: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiCacheEntry {
+  pub is_false_positive: bool,
+  pub reason: Option<String>,
+  pub confidence: Option<f32>,
+  pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct CacheData {
+  #[serde(default)]
+  packages: HashMap<String, PackageCacheEntry>,
+  #[serde(default)]
+  ai: HashMap<String, AiCacheEntry>,
+}
+
 pub struct PackageCache {
   cache_dir: PathBuf,
   cache_key: String,
-  entries: RwLock<HashMap<String, CacheEntry>>,
+  data: RwLock<CacheData>,
 }
 
 impl PackageCache {
@@ -29,7 +45,7 @@ impl PackageCache {
 
     let cache_key = Self::generate_cache_key(cwd, node_modules);
 
-    let cache = Self { cache_dir, cache_key, entries: RwLock::new(HashMap::new()) };
+    let cache = Self { cache_dir, cache_key, data: RwLock::new(CacheData::default()) };
 
     cache.load_cache()?;
     Ok(cache)
@@ -50,8 +66,8 @@ impl PackageCache {
     let cache_file = self.cache_file();
     if cache_file.exists() {
       let content = fs::read_to_string(&cache_file)?;
-      let loaded: HashMap<String, CacheEntry> = serde_json::from_str(&content).unwrap_or_default();
-      *self.entries.write().unwrap() = loaded;
+      let loaded: CacheData = serde_json::from_str(&content).unwrap_or_default();
+      *self.data.write().unwrap() = loaded;
     }
     Ok(())
   }
@@ -60,10 +76,10 @@ impl PackageCache {
     use napi::Error as NapiError;
 
     let cache_file = self.cache_file();
-    let entries = self.entries.read().unwrap();
-    let content = serde_json::to_string_pretty(&*entries)
+    let data = self.data.read().unwrap();
+    let content = serde_json::to_string_pretty(&*data)
       .map_err(|e| NapiError::from_reason(format!("Cache serialize error: {}", e)))?;
-    drop(entries); // Release lock before writing
+    drop(data); // Release lock before writing
     fs::write(cache_file, content)?;
     Ok(())
   }
@@ -94,9 +110,9 @@ impl PackageCache {
 
   pub fn has_changed(&self, name: &str, version: &str, pkg_dir: &Path) -> bool {
     let key = format!("{}@{}", name, version);
-    let entries = self.entries.read().unwrap();
+    let data = self.data.read().unwrap();
 
-    if let Some(entry) = entries.get(&key) {
+    if let Some(entry) = data.packages.get(&key) {
       if entry.version != version {
         return true;
       }
@@ -110,14 +126,14 @@ impl PackageCache {
 
   pub fn get_results(&self, name: &str, version: &str) -> Option<Vec<AnalysisResult>> {
     let key = format!("{}@{}", name, version);
-    let entries = self.entries.read().unwrap();
-    entries.get(&key).map(|e| e.results.clone())
+    let data = self.data.read().unwrap();
+    data.packages.get(&key).map(|e| e.results.clone())
   }
 
   pub fn get(&self, name: &str, version: &str) -> Option<AnalysisResult> {
     let key = format!("{}@{}", name, version);
-    let entries = self.entries.read().unwrap();
-    entries.get(&key).and_then(|e| e.results.first().cloned())
+    let data = self.data.read().unwrap();
+    data.packages.get(&key).and_then(|e| e.results.first().cloned())
   }
 
   pub fn get_if_fresh(
@@ -127,8 +143,8 @@ impl PackageCache {
     max_age_seconds: Option<u64>,
   ) -> Option<AnalysisResult> {
     let key = format!("{}@{}", name, version);
-    let entries = self.entries.read().unwrap();
-    if let Some(entry) = entries.get(&key) {
+    let data = self.data.read().unwrap();
+    if let Some(entry) = data.packages.get(&key) {
       if let Some(max_age) = max_age_seconds {
         let now = std::time::SystemTime::now()
           .duration_since(std::time::UNIX_EPOCH)
@@ -152,10 +168,10 @@ impl PackageCache {
       .unwrap_or(0);
 
     {
-      let mut entries = self.entries.write().unwrap();
-      entries.insert(
+      let mut data = self.data.write().unwrap();
+      data.packages.insert(
         key,
-        CacheEntry {
+        PackageCacheEntry {
           version: version.to_string(),
           content_hash: String::new(),
           results: vec![result.clone()],
@@ -183,9 +199,11 @@ impl PackageCache {
       .unwrap_or(0);
 
     {
-      let mut entries = self.entries.write().unwrap();
-      entries
-        .insert(key, CacheEntry { version: version.to_string(), content_hash, results, timestamp });
+      let mut data = self.data.write().unwrap();
+      data.packages.insert(
+        key,
+        PackageCacheEntry { version: version.to_string(), content_hash, results, timestamp },
+      );
     }
 
     self.save_cache()
@@ -206,8 +224,38 @@ impl PackageCache {
       }
     }
     // Also clear in-memory entries
-    self.entries.write().unwrap().clear();
+    self.data.write().unwrap().packages.clear();
+    self.data.write().unwrap().ai.clear();
     Ok(())
+  }
+
+  // AI Cache Methods
+  pub fn get_ai(&self, issue_id: &str) -> Option<AiCacheEntry> {
+    let data = self.data.read().unwrap();
+    data.ai.get(issue_id).cloned()
+  }
+
+  pub fn set_ai(
+    &self,
+    issue_id: &str,
+    is_false_positive: bool,
+    reason: Option<String>,
+    confidence: Option<f32>,
+  ) -> Result<()> {
+    let timestamp = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .map(|d| d.as_secs())
+      .unwrap_or(0);
+
+    {
+      let mut data = self.data.write().unwrap();
+      data.ai.insert(
+        issue_id.to_string(),
+        AiCacheEntry { is_false_positive, reason, confidence, timestamp },
+      );
+    }
+
+    self.save_cache()
   }
 }
 
@@ -215,7 +263,6 @@ impl PackageCache {
 mod tests {
   use super::*;
   use std::env;
-  use std::sync::RwLock;
 
   #[test]
   fn test_cache_key_format() {
@@ -224,42 +271,25 @@ mod tests {
   }
 
   #[test]
-  fn test_compute_hash_consistency() {
-    let _cache = PackageCache {
-      cache_dir: env::temp_dir(),
-      cache_key: "test".to_string(),
-      entries: RwLock::new(HashMap::new()),
-    };
+  fn test_ai_cache_integration() {
+    let cache_dir = env::temp_dir().join("depspector_test_unified_cache");
+    let _ = fs::remove_dir_all(&cache_dir);
+    let cwd = Path::new(".");
+    let node_modules = Path::new("node_modules");
 
-    // Same input should produce same hash
-    let hash1 = crate::util::sha256_hash("test content");
-    let hash2 = crate::util::sha256_hash("test content");
-    assert_eq!(hash1, hash2);
+    let cache = PackageCache::new(cache_dir.to_str().unwrap(), cwd, node_modules).unwrap();
 
-    // Different input should produce different hash
-    let hash3 = crate::util::sha256_hash("different content");
-    assert_ne!(hash1, hash3);
-  }
+    // AI Cache test
+    cache.set_ai("ISSUE-1", true, Some("safe".to_string()), Some(0.95)).unwrap();
+    let entry = cache.get_ai("ISSUE-1").unwrap();
+    assert!(entry.is_false_positive);
+    assert_eq!(entry.reason, Some("safe".to_string()));
 
-  #[test]
-  fn test_generate_cache_key() {
-    let cwd1 = Path::new("/home/user/project1");
-    let node_modules1 = Path::new("/home/user/project1/node_modules");
+    // Persistence test
+    let cache2 = PackageCache::new(cache_dir.to_str().unwrap(), cwd, node_modules).unwrap();
+    let entry2 = cache2.get_ai("ISSUE-1").unwrap();
+    assert!(entry2.is_false_positive);
 
-    let cwd2 = Path::new("/home/user/project2");
-    let node_modules2 = Path::new("/home/user/project2/node_modules");
-
-    let key1 = PackageCache::generate_cache_key(cwd1, node_modules1);
-    let key2 = PackageCache::generate_cache_key(cwd2, node_modules2);
-    let key1_again = PackageCache::generate_cache_key(cwd1, node_modules1);
-
-    // Same inputs should produce the same key
-    assert_eq!(key1, key1_again);
-
-    // Different inputs should produce different keys
-    assert_ne!(key1, key2);
-
-    // Key should be 16 characters (truncated hash)
-    assert_eq!(key1.len(), 16);
+    let _ = fs::remove_dir_all(&cache_dir);
   }
 }

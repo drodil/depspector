@@ -108,9 +108,9 @@ pub struct Issue {
   pub file: String,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub url: Option<String>,
-  #[serde(skip)]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   package_name: Option<String>,
-  #[serde(skip)]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   package_version: Option<String>,
   #[serde(skip)]
   pub id_generated: bool,
@@ -120,6 +120,8 @@ pub struct Issue {
   pub ai_confidence: Option<f32>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub ai_reason: Option<String>,
+  #[serde(skip)]
+  pub is_from_cache: bool,
 }
 
 impl Issue {
@@ -144,6 +146,7 @@ impl Issue {
       is_false_positive: false,
       ai_confidence: None,
       ai_reason: None,
+      is_from_cache: false,
     }
   }
 

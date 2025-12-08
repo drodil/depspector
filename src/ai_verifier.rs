@@ -1,5 +1,6 @@
-use crate::analyzers::{AnalysisResult, Severity};
+use crate::analyzers::{AnalysisResult, Issue, Severity};
 use crate::benchmark::BenchmarkCollector;
+use crate::cache::PackageCache;
 use crate::config::AiConfig;
 use futures::stream::{self, StreamExt};
 use log::{debug, error, warn};
@@ -10,27 +11,16 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::Arc;
 
 const DEFAULT_MAX_BATCH_CHARS: usize = 50000;
-
-#[derive(Debug, Serialize)]
-struct PromptIssue {
-  id: String,
-  package: String,
-  analyzer: String,
-  message: String,
-  file: String,
-  code: String,
-  #[serde(skip)]
-  severity: Severity,
-}
 
 #[derive(Debug, Deserialize)]
 struct BatchResponse {
   results: Vec<IssueResult>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct IssueResult {
   id: String,
   is_false_positive: bool,
@@ -42,6 +32,7 @@ pub struct AiVerifier {
   config: AiConfig,
   client: Client,
   benchmark_collector: Option<BenchmarkCollector>,
+  cache: Option<Arc<PackageCache>>,
 }
 
 impl AiVerifier {
@@ -52,11 +43,16 @@ impl AiVerifier {
       .timeout(std::time::Duration::from_secs(60))
       .build()
       .unwrap_or_else(|_| Client::new());
-    Self { config, client, benchmark_collector: None }
+    Self { config, client, benchmark_collector: None, cache: None }
   }
 
   pub fn with_benchmark(mut self, collector: Option<BenchmarkCollector>) -> Self {
     self.benchmark_collector = collector;
+    self
+  }
+
+  pub fn with_cache(mut self, cache: Option<Arc<PackageCache>>) -> Self {
+    self.cache = cache;
     self
   }
 
@@ -83,8 +79,8 @@ impl AiVerifier {
 
     let mut candidates = Vec::new();
 
-    for result in &results {
-      for issue in &result.issues {
+    for result in &mut results {
+      for issue in &mut result.issues {
         if issue.severity < threshold {
           continue;
         }
@@ -98,15 +94,31 @@ impl AiVerifier {
           continue;
         };
 
-        candidates.push(PromptIssue {
-          id: issue.get_id(),
-          package: result.package.clone().unwrap_or_else(|| "unknown".to_string()),
-          analyzer: issue.analyzer.clone(),
-          message: issue.message.clone(),
-          file: issue.file.clone(),
-          code: code_snippet,
-          severity: issue.severity,
-        });
+        if let Some(cache) = &self.cache {
+          if let Some(cached_result) = cache.get_ai(&issue.get_id()) {
+            issue.is_false_positive = cached_result.is_false_positive;
+            issue.ai_reason = cached_result.reason;
+            issue.ai_confidence = cached_result.confidence;
+            issue.is_from_cache = true;
+            continue;
+          }
+        }
+
+        let mut candidate = issue.clone();
+        candidate.code = Some(code_snippet);
+        // Ensure ID is available (it should be since get_id() generates it if needed on read, but here we work on a clone)
+        // Wait, issue.get_id() returns the ID and generates it if necessary but it works on &self.
+        // It does NOT update the struct fields if it's not mut.
+        // However, Issue struct has `id` field. `get_id` logic: `if self.id_generated return self.id`.
+        // If not generated, it COMPUTES it and returns it, but doesn't save it unless we call something that takes &mut self?
+        // Ah, `get_id` in `Issue` implementation shown in step 152 takes `&self` and returns `String` but it does NOT mutate `self.id`.
+        // Wait! `Issue::get_id` in step 152:
+        // `pub fn get_id(&self) -> String { ... }`
+        // It computes ID every time if id_generated is false!
+        // So for the candidate, we should set the ID explicitly if we want it serialized.
+        candidate.id = issue.get_id();
+
+        candidates.push(candidate);
       }
     }
 
@@ -128,7 +140,8 @@ impl AiVerifier {
     let max_batch_chars = self.get_max_batch_chars();
 
     for candidate in candidates {
-      let entry_len = candidate.code.len() + 200;
+      // Approximate length
+      let entry_len = candidate.code.as_ref().map(|c| c.len()).unwrap_or(0) + 200;
 
       if current_chars + entry_len > max_batch_chars && !current_batch.is_empty() {
         batches.push(current_batch);
@@ -175,6 +188,11 @@ impl AiVerifier {
               issue.is_false_positive = res.is_false_positive;
               issue.ai_reason = res.reason.clone();
               issue.ai_confidence = res.confidence;
+
+              if let Some(cache) = &self.cache {
+                let _ =
+                  cache.set_ai(&res.id, res.is_false_positive, res.reason.clone(), res.confidence);
+              }
             }
           }
         }
@@ -214,11 +232,7 @@ impl AiVerifier {
     String::new()
   }
 
-  async fn check_batch(
-    &self,
-    api_key: &str,
-    batch: &[PromptIssue],
-  ) -> Result<Vec<IssueResult>, String> {
+  async fn check_batch(&self, api_key: &str, batch: &[Issue]) -> Result<Vec<IssueResult>, String> {
     let toon_batch = serde_toon::to_string(batch).unwrap();
     let prompt = format!(
       "Analyze the following list of potentially insecure code snippets from npm packages.\n\

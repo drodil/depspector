@@ -7,6 +7,7 @@ use log::{debug, info};
 use napi::bindgen_prelude::{Error as NapiError, Result};
 use spinoff::{spinners, Color, Spinner};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub mod ai_verifier;
 pub mod analyzers;
@@ -107,7 +108,7 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   let analyzer = Analyzer::new(&config, cli.offline, only_analyzers);
   let reporter = Reporter::new();
   let cache = if cli.cache {
-    Some(PackageCache::new(&config.cache_dir, &working_dir, &node_modules_path)?)
+    Some(Arc::new(PackageCache::new(&config.cache_dir, &working_dir, &node_modules_path)?))
   } else {
     None
   };
@@ -160,7 +161,7 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   let analyze_ctx = AnalyzeContext::new(
     &node_modules_path,
     &config,
-    cache.as_ref(),
+    cache.as_deref(),
     &ignore_issues,
     cli.fail_fast,
     cli.concurrency,
@@ -181,7 +182,8 @@ pub async fn run(args: Vec<String>) -> Result<()> {
       info!("Verifying packages with AI...");
     }
     let ai_verifier = crate::ai_verifier::AiVerifier::new(config.ai.clone())
-      .with_benchmark(benchmark_collector.clone());
+      .with_benchmark(benchmark_collector.clone())
+      .with_cache(cache.clone());
     results = ai_verifier.verify(results).await;
   }
 
