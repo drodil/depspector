@@ -36,6 +36,9 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "<>"
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
+
       - name: Bump version
         run: npm run bump
 

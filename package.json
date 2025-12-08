@@ -41,7 +41,7 @@
     "cargo:test": "cargo test",
     "cargo:build": "cargo build --release",
     "universal": "napi universal -t npm",
-    "version": "napi version",
+    "version": "napi version && cargo check && git add Cargo.lock",
     "bump-test": "standard-version --dry-run --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'",
     "bump": "standard-version --no-verify --releaseCommitMessageFormat 'v{{currentTag}}'"
   },
