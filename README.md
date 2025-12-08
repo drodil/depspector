@@ -46,6 +46,8 @@ Built with **Rust** for maximum performance and compiled to native Node.js bindi
   - Incremental scanning with `--only-new` flag
   - Cache management for faster subsequent scans
   - Detailed reporting with severity levels (critical/high/medium/low)
+  - HTML reports with interactive dependency graphs (`--html`)
+  - Interactive TUI mode for issue review and management (`--interactive`)
   - CI/CD friendly with configurable exit codes
 
 ## Installation
@@ -92,6 +94,12 @@ npx depspector --offline
 
 # Analyze a different project directory
 npx depspector --cwd /path/to/project
+
+# Generate an HTML report with dependency graph
+npx depspector --html report.html
+
+# Run in interactive mode to review issues
+npx depspector --interactive
 
 # Show detailed benchmark/timing information
 npx depspector --benchmark
@@ -164,7 +172,7 @@ You can also use the CLI flags:
 
 ## Configuration
 
-Create a `.depspectorrc` file in your project root:
+Create a `.depspectorrc` (or `.depspectorrc.json`, `depspector.config.json`) file in your project root, or add a `"depspector"` property to your `package.json`:
 
 ```json
 {
@@ -316,6 +324,33 @@ Add the `ai` section to your `.depspectorrc`:
 
 > [!CAUTION]
 > **Privacy Warning**: When AI verification is enabled, snippets of your code (including the flagged lines and surrounding context) are sent to the configured third-party AI provider. Do not enable this on codebases with strict data egress policies without review.
+
+> **Privacy Warning**: When AI verification is enabled, snippets of your code (including the flagged lines and surrounding context) are sent to the configured third-party AI provider. Do not enable this on codebases with strict data egress policies without review.
+
+## Interactive Triage Mode
+
+Depspector includes an interactive terminal user interface (TUI) for reviewing and managing identified issues. Run with `--interactive` (or `-i`) to start this mode.
+
+Features of Interactive Mode:
+
+- **Browse Issues**: Navigate through the list of found issues.
+- **View Details**: See full issue details, including code snippets and AI analysis.
+- **Ignore Issues**: Quickly add false positives to your configuration's ignore list with a single keystroke.
+- **Open in Editor**: Open the relevant file in your default editor at the specific line number.
+
+## HTML Reporting
+
+Generate a comprehensive HTML report including a visual dependency graph using Mermaid.js:
+
+```bash
+npx depspector --html report.html
+```
+
+The report includes:
+
+- **Summary**: Overview of found issues by severity.
+- **Dependency Graph**: A visual representation of your project's dependency tree, highlighting relationships between packages.
+- **Detailed Findings**: Full list of issues with code snippets, severity levels, and AI verification results.
 
 ## Post-Install Hook
 

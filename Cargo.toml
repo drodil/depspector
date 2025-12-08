@@ -78,6 +78,8 @@ rayon = "1.7"
 aho-corasick = "1"
 glob = "0.3.3"
 serde_toon = "0.2.0"
+dialoguer = "0.11"
+console = "0.15"
 
 [build-dependencies]
 napi-build = "2"

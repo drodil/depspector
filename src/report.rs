@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use colored::*;
 
-use crate::analyzers::{AnalysisResult, DependencyType, Severity, TrustScore};
+use crate::analyzers::{AnalysisResult, DependencyGraph, DependencyType, Severity, TrustScore};
 
 const MAX_LINE_LENGTH: usize = 120;
 
@@ -55,7 +55,9 @@ pub struct ReportContext<'a> {
   pub yaml_output: Option<&'a Path>,
   pub csv_output: Option<&'a Path>,
   pub toon_output: Option<&'a Path>,
+  pub html_output: Option<&'a Path>,
   pub working_dir: &'a Path,
+  pub dependency_graph: Option<&'a DependencyGraph>,
 }
 
 impl<'a> ReportContext<'a> {
@@ -67,8 +69,15 @@ impl<'a> ReportContext<'a> {
       yaml_output: None,
       csv_output: None,
       toon_output: None,
+      html_output: None,
       working_dir,
+      dependency_graph: None,
     }
+  }
+
+  pub fn with_dependency_graph(mut self, graph: Option<&'a DependencyGraph>) -> Self {
+    self.dependency_graph = graph;
+    self
   }
 
   pub fn with_json_output(mut self, path: Option<&'a Path>) -> Self {
@@ -88,6 +97,11 @@ impl<'a> ReportContext<'a> {
 
   pub fn with_toon_output(mut self, path: Option<&'a Path>) -> Self {
     self.toon_output = path;
+    self
+  }
+
+  pub fn with_html_output(mut self, path: Option<&'a Path>) -> Self {
+    self.html_output = path;
     self
   }
 }
@@ -127,6 +141,10 @@ impl Reporter {
 
     if let Some(toon_path) = ctx.toon_output {
       self.write_toon(&filtered, toon_path)?;
+    }
+
+    if let Some(html_path) = ctx.html_output {
+      self.write_html(&filtered, html_path, ctx.dependency_graph, ctx.working_dir)?;
     }
 
     self.print_console(&filtered, min_severity, ctx);
@@ -205,6 +223,152 @@ impl Reporter {
 
     wtr.flush()?;
     println!("{} {}", "CSV report written to:".green(), path.display());
+    Ok(())
+  }
+
+  fn write_html(
+    &self,
+    results: &[AnalysisResult],
+    path: &Path,
+    _dependency_graph: Option<&DependencyGraph>,
+    working_dir: &Path,
+  ) -> std::io::Result<()> {
+    let mut file = File::create(path)?;
+    let mut html = String::from(
+      r#"<!DOCTYPE html>
+<html>
+<head>
+  <title>Depspector Security Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; color: #2c3e50; }
+    h2 { margin-top: 30px; color: #34495e; }
+    .issue { border: 1px solid #eee; margin-bottom: 15px; padding: 15px; border-radius: 6px; background: #fff; border-left-width: 5px; }
+    .critical { border-left-color: #e74c3c; background: #fdf2f2; }
+    .high { border-left-color: #e67e22; background: #fcf6f0; }
+    .medium { border-left-color: #f1c40f; background: #fcfaf2; }
+    .low { border-left-color: #3498db; background: #f2f8fd; }
+    .issue h3 { margin-top: 0; display: flex; align-items: center; gap: 10px; }
+    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 10px 0; font-size: 0.9em; color: #666; }
+    .ai-analysis { background: #f8f9fa; padding: 10px; border-radius: 4px; border-left: 3px solid #6c5ce7; margin-top: 10px; }
+    pre { background: #2d3436; color: #dfe6e9; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: "Fira Code", monospace; font-size: 0.9em; }
+    .badge { padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; color: white; }
+    .badge.critical { background: #e74c3c; }
+    .badge.high { background: #e67e22; }
+    .badge.medium { background: #f1c40f;color: #333; }
+    .badge.low { background: #3498db; }
+    .mermaid { margin: 20px 0; padding: 20px; background: #fff; border: 1px solid #eee; border-radius: 4px; overflow: auto; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Depspector Security Report</h1>
+"#,
+    );
+
+    let total_issues: usize = results.iter().map(|r| r.issues.len()).sum();
+    let critical_count =
+      results.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::Critical).count();
+    let high_count =
+      results.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::High).count();
+    let medium_count =
+      results.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::Medium).count();
+    let low_count =
+      results.iter().flat_map(|r| &r.issues).filter(|i| i.severity == Severity::Low).count();
+
+    html.push_str("<h2>Summary</h2>");
+    html.push_str("<div class=\"meta\">");
+    html.push_str(&format!("<div><strong>Total Issues:</strong> {}</div>", total_issues));
+    html.push_str(&format!(
+      "<div><strong>Critical:</strong> <span class=\"badge critical\">{}</span></div>",
+      critical_count
+    ));
+    html.push_str(&format!(
+      "<div><strong>High:</strong> <span class=\"badge high\">{}</span></div>",
+      high_count
+    ));
+    html.push_str(&format!(
+      "<div><strong>Medium:</strong> <span class=\"badge medium\">{}</span></div>",
+      medium_count
+    ));
+    html.push_str(&format!(
+      "<div><strong>Low:</strong> <span class=\"badge low\">{}</span></div>",
+      low_count
+    ));
+    html.push_str("</div>");
+
+    html.push_str("<h2>Issues Details</h2>");
+    for res in results {
+      if res.issues.is_empty() {
+        continue;
+      }
+
+      for issue in &res.issues {
+        let severity_class = match issue.severity {
+          Severity::Critical => "critical",
+          Severity::High => "high",
+          Severity::Medium => "medium",
+          Severity::Low => "low",
+        };
+        html.push_str(&format!(
+          "<div class=\"issue {}\"><h3><span class=\"badge {}\">{}</span> {}</h3>",
+          severity_class,
+          severity_class,
+          format!("{:?}", issue.severity).to_uppercase(),
+          issue.message
+        ));
+
+        html.push_str("<div class=\"meta\">");
+        html.push_str(&format!(
+          "<div><strong>Package:</strong> {}@{}</div>",
+          res.package.as_deref().unwrap_or("unknown"),
+          res.version.as_deref().unwrap_or("0.0.0")
+        ));
+
+        html.push_str(&format!("<div><strong>ID:</strong> {}</div>", issue.get_id()));
+        html.push_str(&format!("<div><strong>Analyzer:</strong> {}</div>", issue.analyzer));
+        html.push_str("</div>");
+
+        if let Some(reason) = &issue.ai_reason {
+          html.push_str("<div class=\"ai-analysis\">");
+          html.push_str(&format!("<strong>🤖 AI Analysis:</strong> {}", reason));
+          if let Some(conf) = issue.ai_confidence {
+            html.push_str(&format!(" <small>({:.0}% confidence)</small>", conf * 100.0));
+          }
+          html.push_str("</div>");
+        }
+
+        if let Some(code) = &issue.code {
+          html.push_str(&format!("<pre>{}</pre>", code.replace("<", "&lt;").replace(">", "&gt;")));
+        }
+
+        let file_path = if issue.file.is_empty() {
+          res.package_path.clone()
+        } else if issue.file == "package.json"
+          || (!issue.file.contains(std::path::MAIN_SEPARATOR) && !issue.file.contains('/'))
+        {
+          let pkg_path = std::path::Path::new(&res.package_path);
+          pkg_path.join(&issue.file).to_string_lossy().to_string()
+        } else {
+          issue.file.clone()
+        };
+        let display_path = make_path_relative(&file_path, working_dir);
+        let line_info = if issue.line > 0 { format!(":{}", issue.line) } else { String::new() };
+
+        html.push_str(&format!(
+          "<div style=\"margin-top: 10px; font-size: 0.9em; color: #666;\"><strong>File:</strong> {}{}</div>",
+          display_path, line_info
+        ));
+
+        html.push_str("</div>");
+      }
+    }
+
+    html.push_str("</div></body></html>");
+
+    file.write_all(html.as_bytes())?;
+    println!("{} {}", "HTML report written to:".green(), path.display());
     Ok(())
   }
 

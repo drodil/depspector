@@ -161,6 +161,8 @@ pub struct Config {
   pub ast_timeout_ms: u64,
   #[serde(default)]
   pub cache_max_age_seconds: Option<u64>,
+  #[serde(default)]
+  pub interactive: bool,
 }
 
 fn default_cache_dir() -> String {
@@ -196,6 +198,7 @@ impl Default for Config {
       skip_transient: false,
       exclude_sources: false,
       exclude_deps: false,
+      interactive: false,
       npm: NpmConfig::default(),
       ai: AiConfig::default(),
       analyzers: HashMap::new(),
@@ -230,6 +233,21 @@ impl Config {
       }
     }
 
+    let package_json_path = base_dir.join("package.json");
+    if package_json_path.exists() {
+      let content = fs::read_to_string(&package_json_path)?;
+      match serde_json::from_str::<serde_json::Value>(&content) {
+        Ok(json) => {
+          if let Some(config_val) = json.get("depspector") {
+            return serde_json::from_value(config_val.clone()).map_err(|e| {
+              NapiError::from_reason(format!("Config parse error in package.json: {}", e))
+            });
+          }
+        }
+        Err(e) => return Err(NapiError::from_reason(format!("package.json parse error: {}", e))),
+      }
+    }
+
     Ok(Config::default())
   }
 
@@ -244,6 +262,97 @@ impl Config {
   pub fn get_analyzer_severity(&self, name: &str) -> Option<&str> {
     self.analyzers.get(name).and_then(|c| c.severity.as_deref())
   }
+}
+
+pub fn add_ignore_rule(issue_id: &str, cwd: Option<&std::path::Path>) -> napi::Result<()> {
+  use serde_json::json;
+  use std::fs;
+
+  let base_dir = cwd.unwrap_or_else(|| std::path::Path::new("."));
+
+  // 1. Check package.json
+  let package_json_path = base_dir.join("package.json");
+  if package_json_path.exists() {
+    if let Ok(content) = fs::read_to_string(&package_json_path) {
+      if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
+        if json.get("depspector").is_some() {
+          let should_save =
+            if let Some(obj) = json.get_mut("depspector").and_then(|v| v.as_object_mut()) {
+              let ignore_list = obj.entry("ignoreIssues").or_insert(json!([])).as_array_mut();
+              if let Some(ignore_list) = ignore_list {
+                let id_val = serde_json::Value::String(issue_id.to_string());
+                if !ignore_list.contains(&id_val) {
+                  ignore_list.push(id_val);
+                  true
+                } else {
+                  return Ok(());
+                }
+              } else {
+                false
+              }
+            } else {
+              false
+            };
+
+          if should_save {
+            if let Ok(new_content) = serde_json::to_string_pretty(&json) {
+              let _ = fs::write(&package_json_path, new_content);
+              return Ok(());
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Check other config files
+  let default_paths = [".depspectorrc", ".depspectorrc.json", "depspector.config.json"];
+  for name in &default_paths {
+    let path = base_dir.join(name);
+    if path.exists() {
+      if let Ok(content) = fs::read_to_string(&path) {
+        if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
+          let mut should_save = false;
+          let ignore_list = json.get_mut("ignoreIssues");
+          if let Some(list) = ignore_list {
+            if let Some(arr) = list.as_array_mut() {
+              let id_val = serde_json::Value::String(issue_id.to_string());
+              if !arr.contains(&id_val) {
+                arr.push(id_val);
+                should_save = true;
+              } else {
+                return Ok(());
+              }
+            }
+          } else {
+            if let Some(obj) = json.as_object_mut() {
+              obj.insert("ignoreIssues".to_string(), json!([issue_id]));
+              should_save = true;
+            }
+          }
+
+          if should_save {
+            if let Ok(new_content) = serde_json::to_string_pretty(&json) {
+              let _ = fs::write(&path, new_content);
+              return Ok(());
+            }
+          }
+          return Ok(());
+        }
+      }
+    }
+  }
+
+  // 3. Create new .depspectorrc if no config found
+  let new_config = json!({
+      "ignoreIssues": [issue_id]
+  });
+  let path = base_dir.join(".depspectorrc");
+  if let Ok(content) = serde_json::to_string_pretty(&new_config) {
+    let _ = fs::write(&path, content);
+  }
+
+  Ok(())
 }
 
 #[cfg(test)]

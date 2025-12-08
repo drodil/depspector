@@ -879,8 +879,65 @@ fn extract_destructure_info(node: Node, source: &[u8]) -> Option<DestructureInfo
     line: node.start_position().row + 1,
   })
 }
+
 fn node_text(node: Node, source: &[u8]) -> String {
   node.utf8_text(source).unwrap_or("").to_string()
+}
+
+pub fn extract_context(code: &str, line: usize) -> Option<String> {
+  reset_ast_counter();
+  let tree = PARSER.with(|parser| {
+    let mut parser = parser.borrow_mut();
+    parser.parse(code, None)
+  });
+
+  let tree = tree?;
+  let root_node = tree.root_node();
+  let source_bytes = code.as_bytes();
+
+  let target_node = find_node_at_line(root_node, line.saturating_sub(1));
+
+  if let Some(mut node) = target_node {
+    loop {
+      match node.kind() {
+        "function_declaration"
+        | "function_expression"
+        | "arrow_function"
+        | "method_definition"
+        | "class_declaration" => {
+          return Some(node_text(node, source_bytes));
+        }
+        "program" => return Some(node_text(node, source_bytes)),
+        _ => {}
+      }
+
+      if let Some(parent) = node.parent() {
+        node = parent;
+      } else {
+        break;
+      }
+    }
+  }
+
+  None
+}
+
+fn find_node_at_line(node: Node, line: usize) -> Option<Node> {
+  let start_row = node.start_position().row;
+  let end_row = node.end_position().row;
+
+  if line < start_row || line > end_row {
+    return None;
+  }
+
+  let mut cursor = node.walk();
+  for child in node.children(&mut cursor) {
+    if let Some(n) = find_node_at_line(child, line) {
+      return Some(n);
+    }
+  }
+
+  Some(node)
 }
 
 #[cfg(test)]
@@ -1122,5 +1179,30 @@ mod tests {
     let parsed = ParsedAst::parse(code).unwrap();
 
     assert_eq!(parsed.variable_map.get("c"), Some(&"/etc/passwd".to_string()));
+  }
+
+  #[test]
+  fn test_extract_context() {
+    let code = r#"
+      function sensitive() {
+        const secret = "12345";
+        console.log(secret);
+      }
+
+      class Safe {
+        method() {
+           return true;
+        }
+      }
+    "#;
+
+    // Line 3 is 'const secret ...'. Should extract 'sensitive' function.
+    let ctx = extract_context(code, 3).expect("Should find context");
+    assert!(ctx.contains("function sensitive()"));
+    assert!(ctx.contains("console.log(secret)"));
+
+    // Line 8 is 'method() {'. Should extract 'method'.
+    let ctx_method = extract_context(code, 8).expect("Should find method context");
+    assert!(ctx_method.contains("method() {"));
   }
 }

@@ -3,6 +3,7 @@ extern crate napi_derive;
 
 use clap::{CommandFactory, FromArgMatches, Parser};
 use clap_verbosity_flag::Verbosity;
+use colored::Colorize;
 use log::{debug, info};
 use napi::bindgen_prelude::{Error as NapiError, Result};
 use spinoff::{spinners, Color, Spinner};
@@ -17,6 +18,7 @@ pub mod cache;
 pub mod config;
 pub mod dependencies;
 pub mod error;
+pub mod interactive;
 pub mod prefetch;
 pub mod registry;
 pub mod report;
@@ -37,7 +39,7 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   std::panic::set_hook(Box::new(|info| {
     eprintln!("PANIC: {}", info);
   }));
-  let matches = Cli::command().get_matches_from(args);
+  let matches = Cli::command().get_matches_from(args.clone());
   let cli = Cli::from_arg_matches(&matches).map_err(format_cli_error::<Cli>)?;
 
   if cli.no_color {
@@ -91,6 +93,10 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   }
   if cli.exclude_deps {
     config.exclude_deps = true;
+  }
+
+  if cli.interactive {
+    config.interactive = true;
   }
 
   let node_modules_path = working_dir.join(&cli.path);
@@ -155,7 +161,18 @@ pub async fn run(args: Vec<String>) -> Result<()> {
   } else {
     debug!("No packages found in dependency graph");
   }
-  debug!("Discovered {} packages to analyze", dependency_graph.discovered_packages().len());
+
+  let discovered = dependency_graph.discovered_packages();
+  debug!("Discovered {} packages to analyze", discovered.len());
+
+  // UX Improvement: Warn if no dependencies are analyzed but node_modules exists
+  if !config.exclude_deps && !discovered.iter().any(|p| !p.is_local) {
+    let has_dev_arg = args.iter().any(|a| a == "--include-dev-deps");
+    if !config.include_dev_deps && !has_dev_arg {
+      println!("{}", "Warning: No dependencies found to analyze (only local sources).".yellow());
+      println!("{}", "  Hint: If you only have devDependencies, use --include-dev-deps".dimmed());
+    }
+  }
 
   let start_time = std::time::Instant::now();
   let analyze_ctx = AnalyzeContext::new(
@@ -192,12 +209,18 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     s.stop();
   }
 
+  if cli.interactive {
+    return crate::interactive::run_interactive(&results, &config, Some(&working_dir));
+  }
+
   let report_level = cli.report_level.as_deref().unwrap_or(config.report_level.as_str());
   let report_ctx = ReportContext::new(report_level, cli.only_new, &working_dir)
     .with_json_output(cli.json.as_deref())
     .with_yaml_output(cli.yaml.as_deref())
     .with_csv_output(cli.csv.as_deref())
-    .with_toon_output(cli.toon.as_deref());
+    .with_toon_output(cli.toon.as_deref())
+    .with_html_output(cli.html.as_deref())
+    .with_dependency_graph(Some(&dependency_graph));
 
   reporter.report(&results, &report_ctx).map_err(|e| NapiError::from_reason(e.to_string()))?;
 
@@ -272,6 +295,8 @@ struct Cli {
   csv: Option<PathBuf>,
   #[clap(long, help = "Output report as TOON to file")]
   toon: Option<PathBuf>,
+  #[clap(long, help = "Output report as HTML to file")]
+  html: Option<PathBuf>,
   #[clap(long, help = "Minimum severity level to report (critical, high, medium, low, info)")]
   report_level: Option<String>,
   #[clap(long, help = "Show detailed benchmark/timing information for each analyzer")]
@@ -298,6 +323,8 @@ struct Cli {
   exclude_sources: bool,
   #[clap(long, help = "Exclude dependencies from analysis (skip node_modules scanning)")]
   exclude_deps: bool,
+  #[clap(long, short = 'i', help = "Interactive mode (TUI) for reviewing issues")]
+  interactive: bool,
 }
 
 #[cfg(test)]

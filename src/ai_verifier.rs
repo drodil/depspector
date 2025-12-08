@@ -7,8 +7,6 @@ use log::{debug, error, warn};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -206,10 +204,12 @@ impl AiVerifier {
       return String::new();
     }
 
-    if let Ok(file) = File::open(full_path) {
-      let reader = BufReader::new(file);
-      let lines: Vec<String> = reader.lines().map(|l| l.unwrap_or_default()).collect();
+    if let Ok(content) = std::fs::read_to_string(&full_path) {
+      if let Some(smart_context) = crate::ast::extract_context(&content, line) {
+        return smart_context;
+      }
 
+      let lines: Vec<&str> = content.lines().collect();
       let start = line.saturating_sub(6);
       let end = (line + 5).min(lines.len());
 
