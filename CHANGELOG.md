@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.14](https://github.com/drodil/depspector/compare/v0.0.13...v0.0.14) (2025-12-08)
+
+
+### Bug Fixes
+
+* publish config ([9688e7e](https://github.com/drodil/depspector/commit/9688e7e60f312296881d54a0f326d568246ef3c0))
+
 ### [0.0.13](https://github.com/drodil/depspector/compare/v0.0.12...v0.0.13) (2025-12-08)
 
 
