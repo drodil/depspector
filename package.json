@@ -5,7 +5,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "bin": {
-    "depspector": "./bin.js"
+    "depspector": "bin.js"
   },
   "napi": {
     "binaryName": "depspector",
@@ -68,7 +68,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/drodil/depspector.git"
+    "url": "git+https://github.com/drodil/depspector.git"
   },
   "keywords": [
     "npm",
@@ -80,5 +80,8 @@
     "supply-chain"
   ],
   "author": "Heikki Hellgren (heiccih@gmail.com)",
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }
