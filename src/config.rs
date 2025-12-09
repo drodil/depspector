@@ -51,17 +51,12 @@ fn default_registry() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct SimpleConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
   #[serde(default)]
   pub severity: Option<String>,
-}
-
-impl Default for SimpleConfig {
-  fn default() -> Self {
-    Self { enabled: None, severity: None }
-  }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -249,6 +244,7 @@ impl Default for Config {
 }
 
 impl Config {
+  #[allow(clippy::field_reassign_with_default)]
   pub fn default_generated() -> Self {
     let mut config = Self::default();
     config.exit_with_failure_on_level = Some("critical".to_string());
@@ -766,11 +762,9 @@ pub fn add_ignore_rule(issue_id: &str, cwd: Option<&std::path::Path>) -> napi::R
                 return Ok(());
               }
             }
-          } else {
-            if let Some(obj) = json.as_object_mut() {
-              obj.insert("ignoreIssues".to_string(), json!([issue_id]));
-              should_save = true;
-            }
+          } else if let Some(obj) = json.as_object_mut() {
+            obj.insert("ignoreIssues".to_string(), json!([issue_id]));
+            should_save = true;
           }
 
           if should_save {

@@ -168,7 +168,7 @@ impl FileAnalyzer for EnvAnalyzer {
       file_path: context.file_path.to_str().unwrap_or(""),
       package_name: context.package_name,
       line_index: LineIndex::new(context.source),
-      allowed_vars: allowed_env_vars.iter().cloned().collect(),
+      allowed_vars: allowed_env_vars.to_vec(),
       _variable_map: variable_map,
     };
 

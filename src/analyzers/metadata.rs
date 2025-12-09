@@ -41,6 +41,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MetadataConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
@@ -48,11 +49,6 @@ pub struct MetadataConfig {
   pub severity: Option<String>,
 }
 
-impl Default for MetadataConfig {
-  fn default() -> Self {
-    Self { enabled: None, severity: None }
-  }
-}
 
 pub struct MetadataAnalyzer;
 

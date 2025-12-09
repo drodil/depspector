@@ -106,7 +106,7 @@ fn handle_issue_interaction(issue: &Issue, pkg: &str, cwd: Option<&std::path::Pa
           #[cfg(target_os = "macos")]
           let _ = std::process::Command::new("open").arg(&issue.file).spawn();
           #[cfg(target_os = "windows")]
-          let _ = std::process::Command::new("cmd").args(&["/C", "start", "", &issue.file]).spawn();
+          let _ = std::process::Command::new("cmd").args(["/C", "start", "", &issue.file]).spawn();
           #[cfg(target_os = "linux")]
           let _ = std::process::Command::new("xdg-open").arg(&issue.file).spawn();
 

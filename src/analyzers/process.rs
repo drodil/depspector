@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct ProcessConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
@@ -18,11 +19,6 @@ pub struct ProcessConfig {
   pub allowed_commands: Vec<String>,
 }
 
-impl Default for ProcessConfig {
-  fn default() -> Self {
-    Self { enabled: None, severity: None, allowed_commands: Vec::new() }
-  }
-}
 
 const CHILD_PROCESS_METHODS: &[&str] =
   &["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync", "fork"];

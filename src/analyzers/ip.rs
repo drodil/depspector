@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct IpConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
@@ -23,11 +24,6 @@ pub struct IpConfig {
   pub allowed_ips: Vec<String>,
 }
 
-impl Default for IpConfig {
-  fn default() -> Self {
-    Self { enabled: None, severity: None, allowed_ips: Vec::new() }
-  }
-}
 
 pub struct IpAnalyzer;
 

@@ -69,6 +69,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct FsConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
@@ -78,11 +79,6 @@ pub struct FsConfig {
   pub additional_dangerous_paths: Vec<String>,
 }
 
-impl Default for FsConfig {
-  fn default() -> Self {
-    Self { enabled: None, severity: None, additional_dangerous_paths: Vec::new() }
-  }
-}
 
 pub struct FsAnalyzer;
 

@@ -60,6 +60,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct TyposquatConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
@@ -69,11 +70,6 @@ pub struct TyposquatConfig {
   pub popular_packages: Vec<String>,
 }
 
-impl Default for TyposquatConfig {
-  fn default() -> Self {
-    Self { enabled: None, severity: None, popular_packages: Vec::new() }
-  }
-}
 
 pub struct TyposquatAnalyzer;
 

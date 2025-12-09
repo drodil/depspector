@@ -216,7 +216,7 @@ impl FileAnalyzer for NetworkAnalyzer {
       file_path: context.file_path.to_str().unwrap_or(""),
       package_name: context.package_name,
       line_index: LineIndex::new(context.source),
-      allowed_hosts: allowed_hosts.iter().cloned().collect(),
+      allowed_hosts: allowed_hosts.to_vec(),
       variable_map,
     };
 

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct ReputationConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
@@ -15,11 +16,6 @@ pub struct ReputationConfig {
   pub whitelisted_users: Vec<String>,
 }
 
-impl Default for ReputationConfig {
-  fn default() -> Self {
-    Self { enabled: None, severity: None, whitelisted_users: Vec::new() }
-  }
-}
 
 #[derive(Default)]
 pub struct ReputationAnalyzer;
