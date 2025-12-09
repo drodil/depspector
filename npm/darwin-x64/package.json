@@ -1,6 +1,6 @@
 {
   "name": "@drodil/depspector-darwin-x64",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "cpu": [
     "x64"
   ],

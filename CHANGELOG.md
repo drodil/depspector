@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.15](https://github.com/drodil/depspector/compare/v0.0.14...v0.0.15) (2025-12-09)
+
+
+### Features
+
+* config improvements ([38eb931](https://github.com/drodil/depspector/commit/38eb931ce53192c8b9c658766e5d3fc296c0e2d0))
+* **config:** support creating initial config ([de308d8](https://github.com/drodil/depspector/commit/de308d8e89f9ecad8577fe721b9df6920db65814))
+* interactive mode + html report ([921103d](https://github.com/drodil/depspector/commit/921103d9436e3f77a2fcd3308f605cff7cef47bb))
+
+
+### Bug Fixes
+
+* clippy warnings ([2fb3e9c](https://github.com/drodil/depspector/commit/2fb3e9cfbc78751747f5a0017c8238ff3a3cbd73))
+* duplicate packages ([8821cc8](https://github.com/drodil/depspector/commit/8821cc88ca14b4906d6287382a7629757d0898d6))
+* formatting ([1d15727](https://github.com/drodil/depspector/commit/1d15727136824d5af1f80d4e54ec201b11a8d3e8))
+* performance improvements ([3bb8327](https://github.com/drodil/depspector/commit/3bb8327ba62e0b9681ff3205ac3a88d2ca3089d2))
+* prettier ([688cf38](https://github.com/drodil/depspector/commit/688cf3811e75fde9521a1b55e2f264f54221a5dc))
+* url and publish config of npm packages ([1391a63](https://github.com/drodil/depspector/commit/1391a63f18e0dbf9e5876655e3b76025e0df58ec))
+
 ### [0.0.14](https://github.com/drodil/depspector/compare/v0.0.13...v0.0.14) (2025-12-08)
 
 
