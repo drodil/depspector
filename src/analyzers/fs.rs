@@ -79,7 +79,6 @@ pub struct FsConfig {
   pub additional_dangerous_paths: Vec<String>,
 }
 
-
 pub struct FsAnalyzer;
 
 struct FsVisitor<'a> {

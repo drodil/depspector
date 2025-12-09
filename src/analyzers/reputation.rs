@@ -16,7 +16,6 @@ pub struct ReputationConfig {
   pub whitelisted_users: Vec<String>,
 }
 
-
 #[derive(Default)]
 pub struct ReputationAnalyzer;
 

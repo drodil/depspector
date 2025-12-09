@@ -49,7 +49,6 @@ pub struct MetadataConfig {
   pub severity: Option<String>,
 }
 
-
 pub struct MetadataAnalyzer;
 
 struct MetadataVisitor<'a> {

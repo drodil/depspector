@@ -70,7 +70,6 @@ pub struct TyposquatConfig {
   pub popular_packages: Vec<String>,
 }
 
-
 pub struct TyposquatAnalyzer;
 
 #[async_trait]

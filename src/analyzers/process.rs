@@ -19,7 +19,6 @@ pub struct ProcessConfig {
   pub allowed_commands: Vec<String>,
 }
 
-
 const CHILD_PROCESS_METHODS: &[&str] =
   &["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync", "fork"];
 

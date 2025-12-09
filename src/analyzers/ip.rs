@@ -24,7 +24,6 @@ pub struct IpConfig {
   pub allowed_ips: Vec<String>,
 }
 
-
 pub struct IpAnalyzer;
 
 impl FileAnalyzer for IpAnalyzer {

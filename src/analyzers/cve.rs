@@ -43,9 +43,9 @@ impl Default for CveConfig {
 pub struct CVEAnalyzer;
 
 impl Default for CVEAnalyzer {
-    fn default() -> Self {
-        Self::new()
-    }
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl CVEAnalyzer {
