@@ -3,6 +3,33 @@ use chrono::{DateTime, Utc};
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DormantConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_days_since_previous_publish")]
+  pub days_since_previous_publish: u64,
+}
+
+pub fn default_days_since_previous_publish() -> u64 {
+  365
+}
+
+impl Default for DormantConfig {
+  fn default() -> Self {
+    Self {
+      enabled: None,
+      severity: None,
+      days_since_previous_publish: default_days_since_previous_publish(),
+    }
+  }
+}
+
 #[derive(Default)]
 pub struct DormantAnalyzer;
 
@@ -25,8 +52,7 @@ impl PackageAnalyzer for DormantAnalyzer {
   async fn analyze(&self, context: &PackageContext<'_>) -> Vec<Issue> {
     let mut issues = vec![];
 
-    let dormant_config = context.config.get_analyzer_config("dormant");
-    let days_threshold = dormant_config.and_then(|c| c.days_since_previous_publish).unwrap_or(365);
+    let days_threshold = context.config.analyzers.dormant.days_since_previous_publish;
 
     let metadata = match &context.prefetched {
       Some(prefetched) => match prefetched.get_metadata(context.name, context.version).await {

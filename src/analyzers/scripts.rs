@@ -1,6 +1,39 @@
 use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptsConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_allowed_scripts")]
+  pub allowed_scripts: Vec<String>,
+  #[serde(default = "default_allowed_commands")]
+  pub allowed_commands: Vec<String>,
+}
+
+pub fn default_allowed_scripts() -> Vec<String> {
+  Vec::new()
+}
+
+pub fn default_allowed_commands() -> Vec<String> {
+  DEFAULT_ALLOWED_COMMANDS.iter().map(|s| s.to_string()).collect()
+}
+
+impl Default for ScriptsConfig {
+  fn default() -> Self {
+    Self {
+      enabled: None,
+      severity: None,
+      allowed_scripts: default_allowed_scripts(),
+      allowed_commands: default_allowed_commands(),
+    }
+  }
+}
 
 const SUSPICIOUS_LIFECYCLE_EVENTS: &[&str] =
   &["preinstall", "install", "postinstall", "prepublish", "prepare", "prepack", "postpack"];
@@ -82,17 +115,8 @@ impl PackageAnalyzer for ScriptsAnalyzer {
       None => return issues,
     };
 
-    let allowed_scripts = context
-      .config
-      .get_analyzer_config("scripts")
-      .and_then(|c| c.allowed_scripts.clone())
-      .unwrap_or_default();
-
-    let additional_allowed_commands: Vec<String> = context
-      .config
-      .get_analyzer_config("scripts")
-      .and_then(|c| c.allowed_commands.clone())
-      .unwrap_or_default();
+    let allowed_scripts = &context.config.analyzers.scripts.allowed_scripts;
+    let allowed_commands = &context.config.analyzers.scripts.allowed_commands;
 
     let package_json_str = serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
 
@@ -115,11 +139,9 @@ impl PackageAnalyzer for ScriptsAnalyzer {
         }
 
         let script_lower = script_str.to_lowercase();
+        // Check against configured allowed commands
         let is_allowed =
-          DEFAULT_ALLOWED_COMMANDS.iter().any(|cmd| script_lower.starts_with(&cmd.to_lowercase()))
-            || additional_allowed_commands
-              .iter()
-              .any(|cmd| script_lower.starts_with(&cmd.to_lowercase()));
+          allowed_commands.iter().any(|cmd| script_lower.starts_with(&cmd.to_lowercase()));
 
         if is_allowed {
           continue;
@@ -215,7 +237,7 @@ mod tests {
 
     assert_eq!(issues.len(), 1);
     assert!(issues[0].message.contains("postinstall"));
-    // node *.js is high severity
+    // node *.js is medium severity
     assert_eq!(issues[0].severity, Severity::Medium);
   }
 
@@ -278,12 +300,7 @@ mod tests {
   async fn test_allowed_scripts() {
     let analyzer = ScriptsAnalyzer;
     let mut config = crate::config::Config::default();
-
-    let analyzer_config = crate::config::AnalyzerConfig {
-      allowed_scripts: Some(vec!["postinstall".to_string()]),
-      ..Default::default()
-    };
-    config.analyzers.insert("scripts".to_string(), analyzer_config);
+    config.analyzers.scripts.allowed_scripts.push("postinstall".to_string());
 
     let package_json = serde_json::json!({
         "name": "test-package",

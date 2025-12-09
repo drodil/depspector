@@ -1,5 +1,28 @@
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObfuscationConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_min_string_length")]
+  pub min_string_length: usize,
+}
+
+pub fn default_min_string_length() -> usize {
+  DEFAULT_MIN_STRING_LENGTH
+}
+
+impl Default for ObfuscationConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, min_string_length: default_min_string_length() }
+  }
+}
+
 pub struct ObfuscationAnalyzer;
 
 const DEFAULT_MIN_STRING_LENGTH: usize = 200;
@@ -12,9 +35,7 @@ impl FileAnalyzer for ObfuscationAnalyzer {
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
     let mut issues = vec![];
 
-    let config = context.config.get_analyzer_config(self.name());
-    let min_string_length =
-      config.and_then(|c| c.min_string_length).unwrap_or(DEFAULT_MIN_STRING_LENGTH);
+    let min_string_length = context.config.analyzers.obfuscation.min_string_length;
 
     for (line_num, line) in context.source.lines().enumerate() {
       if let Some(long_string) = find_long_string(line, min_string_length) {
@@ -267,9 +288,7 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let analyzer_config =
-      crate::config::AnalyzerConfig { min_string_length: Some(50), ..Default::default() };
-    config.analyzers.insert("obfuscation".to_string(), analyzer_config);
+    config.analyzers.obfuscation.min_string_length = 50;
 
     let source = format!(r#"const x = "{}";"#, "a".repeat(60));
 

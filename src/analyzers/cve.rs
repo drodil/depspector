@@ -1,9 +1,45 @@
-use async_trait::async_trait;
-
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
 use crate::prefetch::VulnerabilityInfo;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CveConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_cvss_critical")]
+  pub cvss_critical: f64,
+  #[serde(default = "default_cvss_high")]
+  pub cvss_high: f64,
+  #[serde(default = "default_cvss_medium")]
+  pub cvss_medium: f64,
+}
+
+pub fn default_cvss_critical() -> f64 {
+  9.0
+}
+pub fn default_cvss_high() -> f64 {
+  7.0
+}
+pub fn default_cvss_medium() -> f64 {
+  4.0
+}
+
+impl Default for CveConfig {
+  fn default() -> Self {
+    Self {
+      enabled: None,
+      severity: None,
+      cvss_critical: default_cvss_critical(),
+      cvss_high: default_cvss_high(),
+      cvss_medium: default_cvss_medium(),
+    }
+  }
+}
+
 pub struct CVEAnalyzer;
 
 impl CVEAnalyzer {
@@ -29,22 +65,18 @@ impl CVEAnalyzer {
     }
   }
 
-  fn map_severity(&self, info: &VulnerabilityInfo) -> Severity {
-    let critical_threshold = 9.0_f64;
-    let high_threshold = 7.0_f64;
-    let medium_threshold = 4.0_f64;
-
+  fn map_severity(info: &VulnerabilityInfo, config: &CveConfig) -> Severity {
     if let (Some(ref severity_type), Some(ref score)) = (&info.severity_type, &info.score) {
       if severity_type == "CVSS_V3" {
         let score_str = score.split_whitespace().next().unwrap_or("0");
         if let Ok(score_val) = score_str.parse::<f64>() {
-          if score_val >= critical_threshold {
+          if score_val >= config.cvss_critical {
             return Severity::Critical;
           }
-          if score_val >= high_threshold {
+          if score_val >= config.cvss_high {
             return Severity::High;
           }
-          if score_val >= medium_threshold {
+          if score_val >= config.cvss_medium {
             return Severity::Medium;
           }
           return Severity::Low;
@@ -79,10 +111,8 @@ impl PackageAnalyzer for CVEAnalyzer {
   async fn analyze(&self, context: &PackageContext<'_>) -> Vec<Issue> {
     let mut issues = vec![];
 
-    if let Some(cve_config) = context.config.get_analyzer_config("cve") {
-      if cve_config.enabled == Some(false) {
-        return issues;
-      }
+    if context.config.analyzers.cve.enabled == Some(false) {
+      return issues;
     }
 
     let vulns = match &context.prefetched {
@@ -95,10 +125,15 @@ impl PackageAnalyzer for CVEAnalyzer {
       None => return issues,
     };
 
+    let cve_config = &context.config.analyzers.cve;
+
     for vuln in vulns {
-      let severity = self.map_severity(&vuln);
-      let summary =
-        vuln.summary.or(vuln.details).unwrap_or_else(|| "Known vulnerability".to_string());
+      let severity = CVEAnalyzer::map_severity(&vuln, cve_config);
+      let summary = vuln
+        .summary
+        .clone()
+        .or(vuln.details.clone())
+        .unwrap_or_else(|| "Known vulnerability".to_string());
 
       let url = Self::get_vulnerability_url(&vuln.id);
       let message = format!("{}: {}", vuln.id, summary);

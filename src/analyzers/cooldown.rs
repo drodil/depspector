@@ -3,6 +3,29 @@ use chrono::{DateTime, Utc};
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CooldownConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_hours_since_publish")]
+  pub hours_since_publish: u64,
+}
+
+pub fn default_hours_since_publish() -> u64 {
+  72
+}
+
+impl Default for CooldownConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, hours_since_publish: default_hours_since_publish() }
+  }
+}
+
 #[derive(Default)]
 pub struct CooldownAnalyzer;
 
@@ -25,8 +48,7 @@ impl PackageAnalyzer for CooldownAnalyzer {
   async fn analyze(&self, context: &PackageContext<'_>) -> Vec<Issue> {
     let mut issues = vec![];
 
-    let cooldown_config = context.config.get_analyzer_config("cooldown");
-    let hours_threshold = cooldown_config.and_then(|c| c.hours_since_publish).unwrap_or(72);
+    let hours_threshold = context.config.analyzers.cooldown.hours_since_publish;
 
     let metadata = match &context.prefetched {
       Some(prefetched) => match prefetched.get_metadata(context.name, context.version).await {

@@ -1,3 +1,4 @@
+use crate::cache::PackageCache;
 use crate::config::NpmConfig;
 use crate::registry::{PackageMetadata, Registry};
 use futures::stream::{self, StreamExt};
@@ -116,10 +117,32 @@ impl PrefetchedData {
       }
     }
 
-    match self.registry.get_package_cached(name, version, &self.cache_dir).await {
+    let path = std::path::Path::new(&self.cache_dir)
+      .join("registry")
+      .join("metadata")
+      .join(format!("{}@{}.json", name, version));
+
+    if path.exists() {
+      if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(meta) = serde_json::from_str::<PackageMetadata>(&content) {
+          let mut cache = self.metadata.write().await;
+          cache.insert(name.to_string(), meta.clone());
+          return Some(meta);
+        }
+      }
+    }
+
+    match self.registry.get_package(name).await {
       Ok(meta) => {
         let mut cache = self.metadata.write().await;
         cache.insert(name.to_string(), meta.clone());
+
+        if let Ok(content) = serde_json::to_string(&meta) {
+          if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+          }
+          let _ = std::fs::write(path, content);
+        }
         Some(meta)
       }
       Err(e) => {
@@ -164,6 +187,7 @@ impl Prefetcher {
     packages: &[PackageId],
     cache_dir: &str,
     concurrency: usize,
+    cache: Option<&PackageCache>,
   ) -> PrefetchedData {
     let data = PrefetchedData::new(Registry::with_config(&self.npm_config), cache_dir.to_string());
 
@@ -195,8 +219,8 @@ impl Prefetcher {
 
     let prefetch_start = Instant::now();
     let ((), ()) = tokio::join!(
-      self.prefetch_metadata(&packages_with_highest_version, cache_dir, concurrency, &data),
-      self.prefetch_cves(packages, &data)
+      self.prefetch_metadata(&packages_with_highest_version, cache_dir, concurrency, &data, cache),
+      self.prefetch_cves(packages, &data, cache)
     );
     log::debug!(
       "[PREFETCH] Parallel prefetch took {:?} (metadata: {} unique packages, CVE: {} packages)",
@@ -214,6 +238,7 @@ impl Prefetcher {
     cache_dir: &str,
     concurrency: usize,
     data: &PrefetchedData,
+    cache: Option<&PackageCache>,
   ) {
     let cache_dir_owned = cache_dir.to_string();
     let results: Vec<_> = stream::iter(packages.iter().cloned())
@@ -221,8 +246,48 @@ impl Prefetcher {
         let cache_dir = cache_dir_owned.clone();
         let registry = &self.registry;
         async move {
-          match registry.get_package_cached(&name, &version, &cache_dir).await {
-            Ok(meta) => Some((name, meta)),
+          // 1. Try NetworkCache (TTL 24 hours)
+          let cache_key = format!("metadata:{}", name);
+          if let Some(pc) = cache {
+            if let Some(content) = pc.get_network(&cache_key, 24 * 3600) {
+              if let Ok(meta) = serde_json::from_str::<PackageMetadata>(&content) {
+                return Some((name, meta));
+              }
+            }
+          }
+
+          let path = std::path::Path::new(&cache_dir)
+            .join("registry")
+            .join("metadata")
+            .join(format!("{}@{}.json", name, version));
+
+          if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+              if let Ok(meta) = serde_json::from_str::<PackageMetadata>(&content) {
+                return Some((name, meta));
+              }
+            }
+          }
+
+          match registry.get_package(&name).await {
+            Ok(meta) => {
+              // Store in NetworkCache
+              if let Some(pc) = cache {
+                if let Ok(content) = serde_json::to_string(&meta) {
+                  let _ = pc.set_network(&cache_key, content.clone());
+                }
+              }
+
+              // Store in file cache for next time
+              if let Ok(content) = serde_json::to_string(&meta) {
+                if let Some(parent) = path.parent() {
+                  let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(path, content);
+              }
+
+              Some((name, meta))
+            }
             Err(e) => {
               log::debug!("[PREFETCH] Failed to fetch metadata for {}: {}", name, e);
               None
@@ -241,10 +306,48 @@ impl Prefetcher {
     }
   }
 
-  async fn prefetch_cves(&self, packages: &[PackageId], data: &PrefetchedData) {
+  async fn prefetch_cves(
+    &self,
+    packages: &[PackageId],
+    data: &PrefetchedData,
+    cache: Option<&PackageCache>,
+  ) {
     const BATCH_SIZE: usize = 500;
 
-    for chunk in packages.chunks(BATCH_SIZE) {
+    // Filter packages that are already in cache (TTL 1 hour)
+    let mut packages_to_fetch = Vec::new();
+    let mut cached_cves = HashMap::new();
+
+    if let Some(pc) = cache {
+      for pkg in packages {
+        let key = format!("cve:{}", pkg.cache_key());
+        if let Some(content) = pc.get_network(&key, 3600) {
+          if let Ok(vulns) = serde_json::from_str::<Vec<VulnerabilityInfo>>(&content) {
+            cached_cves.insert(pkg.cache_key(), vulns);
+          } else {
+            packages_to_fetch.push(pkg.clone());
+          }
+        } else {
+          packages_to_fetch.push(pkg.clone());
+        }
+      }
+    } else {
+      packages_to_fetch = packages.to_vec();
+    }
+
+    // Populate data with cached results
+    {
+      let mut vuln_map = data.vulnerabilities.write().await;
+      for (key, vulns) in cached_cves {
+        vuln_map.insert(key, vulns);
+      }
+    }
+
+    if packages_to_fetch.is_empty() {
+      return;
+    }
+
+    for chunk in packages_to_fetch.chunks(BATCH_SIZE) {
       let queries: Vec<OSVSingleQuery> = chunk
         .iter()
         .map(|p| OSVSingleQuery {
@@ -302,6 +405,15 @@ impl Prefetcher {
               .collect()
           })
           .unwrap_or_default();
+
+        // Cache the result
+        if let Some(pc) = cache {
+          let cache_key = format!("cve:{}", key);
+          if let Ok(content) = serde_json::to_string(&vulns) {
+            let _ = pc.set_network(&cache_key, content);
+          }
+        }
+
         vuln_map.insert(key, vulns);
       }
     }

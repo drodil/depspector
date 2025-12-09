@@ -1,6 +1,26 @@
+use crate::analyzers::base64::{default_min_buffer_length_base64, Base64Config};
+use crate::analyzers::buffer::{default_min_buffer_length_buffer, BufferConfig};
+use crate::analyzers::cooldown::{default_hours_since_publish, CooldownConfig};
+use crate::analyzers::cve::{
+  default_cvss_critical, default_cvss_high, default_cvss_medium, CveConfig,
+};
+use crate::analyzers::dormant::{default_days_since_previous_publish, DormantConfig};
+use crate::analyzers::env::{default_allowed_env_vars, EnvConfig};
+use crate::analyzers::fs::FsConfig;
+use crate::analyzers::ip::IpConfig;
+use crate::analyzers::license::LicenseConfig;
+use crate::analyzers::metadata::MetadataConfig;
+use crate::analyzers::minified::{
+  default_max_line_length, default_max_whitespace_ratio, default_min_code_length, MinifiedConfig,
+};
+use crate::analyzers::network::{default_allowed_hosts, NetworkConfig};
+use crate::analyzers::obfuscation::{default_min_string_length, ObfuscationConfig};
+use crate::analyzers::process::ProcessConfig;
+use crate::analyzers::reputation::ReputationConfig;
+use crate::analyzers::scripts::{default_allowed_commands, default_allowed_scripts, ScriptsConfig};
+use crate::analyzers::typosquat::TyposquatConfig;
 use napi::bindgen_prelude::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -27,53 +47,72 @@ fn default_registry() -> String {
   "https://registry.npmjs.org".to_string()
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+// --- Analyzer Specific Configs ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalyzerConfig {
+pub struct SimpleConfig {
   #[serde(default)]
   pub enabled: Option<bool>,
   #[serde(default)]
   pub severity: Option<String>,
+}
+
+impl Default for SimpleConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None }
+  }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Analyzers {
   #[serde(default)]
-  pub min_buffer_length: Option<usize>,
+  pub scripts: ScriptsConfig,
   #[serde(default)]
-  pub hours_since_publish: Option<u64>,
+  pub env: EnvConfig,
   #[serde(default)]
-  pub days_since_previous_publish: Option<u64>,
+  pub network: NetworkConfig,
   #[serde(default)]
-  pub whitelisted_users: Option<Vec<String>>,
+  pub obfuscation: ObfuscationConfig,
   #[serde(default)]
-  pub min_severity: Option<String>,
+  pub buffer: BufferConfig,
   #[serde(default)]
-  pub days_since_last_publish: Option<u64>,
+  pub base64: Base64Config,
   #[serde(default)]
-  pub allowed_variables: Option<Vec<String>>,
+  pub cooldown: CooldownConfig,
   #[serde(default)]
-  pub allowed_env_vars: Option<Vec<String>>,
+  pub dormant: DormantConfig,
   #[serde(default)]
-  pub additional_dangerous_paths: Option<Vec<String>>,
+  pub ip: IpConfig,
   #[serde(default)]
-  pub require_repository: Option<bool>,
+  pub fs: FsConfig,
   #[serde(default)]
-  pub require_license: Option<bool>,
+  pub license: LicenseConfig,
   #[serde(default)]
-  pub min_string_length: Option<usize>,
+  pub typosquat: TyposquatConfig,
   #[serde(default)]
-  pub allowed_hosts: Option<Vec<String>>,
+  pub reputation: ReputationConfig,
   #[serde(default)]
-  pub min_obfuscation_score: Option<f64>,
+  pub eval: SimpleConfig,
   #[serde(default)]
-  pub min_downloads: Option<u64>,
+  pub process: ProcessConfig,
   #[serde(default)]
-  pub allowed_scripts: Option<Vec<String>>,
+  pub native: SimpleConfig,
   #[serde(default)]
-  pub allowed_commands: Option<Vec<String>>,
+  pub minified: MinifiedConfig,
   #[serde(default)]
-  pub popular_packages: Option<Vec<String>>,
+  pub pollution: SimpleConfig,
   #[serde(default)]
-  pub allowed_ips: Option<Vec<String>>,
+  pub secrets: SimpleConfig,
   #[serde(default)]
-  pub allowed_licenses: Option<Vec<String>>,
+  pub deprecated: SimpleConfig,
+  #[serde(default)]
+  pub cve: CveConfig,
+  #[serde(default)]
+  pub dynamic: SimpleConfig,
+  #[serde(default)]
+  pub metadata: MetadataConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,7 +193,7 @@ pub struct Config {
   #[serde(default)]
   pub ai: AiConfig,
   #[serde(default)]
-  pub analyzers: HashMap<String, AnalyzerConfig>,
+  pub analyzers: Analyzers,
   #[serde(default = "default_max_file_size")]
   pub max_file_size: usize,
   #[serde(default)]
@@ -201,7 +240,7 @@ impl Default for Config {
       interactive: false,
       npm: NpmConfig::default(),
       ai: AiConfig::default(),
-      analyzers: HashMap::new(),
+      analyzers: Analyzers::default(),
       max_file_size: default_max_file_size(),
       ast_timeout_ms: 0,
       cache_max_age_seconds: None,
@@ -213,11 +252,15 @@ impl Config {
   pub fn load(config_path: Option<&Path>, cwd: Option<&Path>) -> Result<Self> {
     use napi::Error as NapiError;
 
+    let mut config = Config::default();
+
     if let Some(path) = config_path {
       if path.exists() {
         let content = fs::read_to_string(path)?;
-        return serde_json::from_str(&content)
-          .map_err(|e| NapiError::from_reason(format!("Config parse error: {}", e)));
+        let loaded: Config = serde_json::from_str(&content)
+          .map_err(|e| NapiError::from_reason(format!("Config parse error: {}", e)))?;
+        config.merge(loaded);
+        return Ok(config);
       }
     }
 
@@ -228,8 +271,10 @@ impl Config {
       let path = base_dir.join(name);
       if path.exists() {
         let content = fs::read_to_string(&path)?;
-        return serde_json::from_str(&content)
-          .map_err(|e| NapiError::from_reason(format!("Config parse error: {}", e)));
+        let loaded: Config = serde_json::from_str(&content)
+          .map_err(|e| NapiError::from_reason(format!("Config parse error: {}", e)))?;
+        config.merge(loaded);
+        return Ok(config);
       }
     }
 
@@ -239,28 +284,338 @@ impl Config {
       match serde_json::from_str::<serde_json::Value>(&content) {
         Ok(json) => {
           if let Some(config_val) = json.get("depspector") {
-            return serde_json::from_value(config_val.clone()).map_err(|e| {
+            let loaded: Config = serde_json::from_value(config_val.clone()).map_err(|e| {
               NapiError::from_reason(format!("Config parse error in package.json: {}", e))
-            });
+            })?;
+            config.merge(loaded);
+            return Ok(config);
           }
         }
         Err(e) => return Err(NapiError::from_reason(format!("package.json parse error: {}", e))),
       }
     }
 
-    Ok(Config::default())
+    Ok(config)
   }
 
-  pub fn get_analyzer_config(&self, name: &str) -> Option<&AnalyzerConfig> {
-    self.analyzers.get(name)
+  pub fn merge(&mut self, other: Config) {
+    if !other.exclude.is_empty() {
+      self.exclude = other.exclude;
+    }
+    if !other.exclude_paths.is_empty() {
+      self.exclude_paths = other.exclude_paths;
+    }
+    if !other.ignore_issues.is_empty() {
+      self.ignore_issues = other.ignore_issues;
+    }
+    if other.cache_dir != default_cache_dir() {
+      self.cache_dir = other.cache_dir;
+    }
+    if other.report_level != default_report_level() {
+      self.report_level = other.report_level;
+    }
+    if other.exit_with_failure_on_level.is_some() {
+      self.exit_with_failure_on_level = other.exit_with_failure_on_level;
+    }
+    if other.fail_fast {
+      self.fail_fast = true;
+    }
+    if other.include_tests {
+      self.include_tests = true;
+    }
+    if other.include_dev_deps {
+      self.include_dev_deps = true;
+    }
+    if other.include_optional_deps {
+      self.include_optional_deps = true;
+    }
+    if !other.include_peer_deps {
+      self.include_peer_deps = false;
+    }
+    if other.skip_transient {
+      self.skip_transient = true;
+    }
+    if other.exclude_sources {
+      self.exclude_sources = true;
+    }
+    if other.exclude_deps {
+      self.exclude_deps = true;
+    }
+    if other.interactive {
+      self.interactive = true;
+    }
+
+    self.npm = other.npm;
+    self.ai = other.ai;
+
+    macro_rules! merge_simple {
+      ($name:ident) => {
+        if let Some(enabled) = other.analyzers.$name.enabled {
+          self.analyzers.$name.enabled = Some(enabled);
+        }
+        if let Some(severity) = other.analyzers.$name.severity {
+          self.analyzers.$name.severity = Some(severity);
+        }
+      };
+    }
+
+    merge_simple!(eval);
+    if let Some(enabled) = other.analyzers.process.enabled {
+      self.analyzers.process.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.process.severity {
+      self.analyzers.process.severity = Some(severity);
+    }
+    if !other.analyzers.process.allowed_commands.is_empty() {
+      self.analyzers.process.allowed_commands = other.analyzers.process.allowed_commands;
+    }
+    merge_simple!(native);
+    if let Some(enabled) = other.analyzers.minified.enabled {
+      self.analyzers.minified.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.minified.severity {
+      self.analyzers.minified.severity = Some(severity);
+    }
+    if other.analyzers.minified.max_line_length != default_max_line_length() {
+      self.analyzers.minified.max_line_length = other.analyzers.minified.max_line_length;
+    }
+    if other.analyzers.minified.min_code_length != default_min_code_length() {
+      self.analyzers.minified.min_code_length = other.analyzers.minified.min_code_length;
+    }
+    if (other.analyzers.minified.max_whitespace_ratio - default_max_whitespace_ratio()).abs()
+      > f64::EPSILON
+    {
+      self.analyzers.minified.max_whitespace_ratio = other.analyzers.minified.max_whitespace_ratio;
+    }
+    merge_simple!(pollution);
+    merge_simple!(secrets);
+    merge_simple!(deprecated);
+    if let Some(enabled) = other.analyzers.cve.enabled {
+      self.analyzers.cve.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.cve.severity {
+      self.analyzers.cve.severity = Some(severity);
+    }
+    if other.analyzers.cve.cvss_critical != default_cvss_critical() {
+      self.analyzers.cve.cvss_critical = other.analyzers.cve.cvss_critical;
+    }
+    if other.analyzers.cve.cvss_high != default_cvss_high() {
+      self.analyzers.cve.cvss_high = other.analyzers.cve.cvss_high;
+    }
+    if other.analyzers.cve.cvss_medium != default_cvss_medium() {
+      self.analyzers.cve.cvss_medium = other.analyzers.cve.cvss_medium;
+    }
+    merge_simple!(dynamic);
+    merge_simple!(metadata);
+
+    // Merge complex configs
+    if let Some(enabled) = other.analyzers.scripts.enabled {
+      self.analyzers.scripts.enabled = Some(enabled);
+    }
+
+    if let Some(severity) = other.analyzers.scripts.severity {
+      self.analyzers.scripts.severity = Some(severity);
+    }
+    if !other.analyzers.scripts.allowed_scripts.is_empty()
+      && other.analyzers.scripts.allowed_scripts != default_allowed_scripts()
+    {
+      self.analyzers.scripts.allowed_scripts = other.analyzers.scripts.allowed_scripts;
+    }
+    if !other.analyzers.scripts.allowed_commands.is_empty()
+      && other.analyzers.scripts.allowed_commands != default_allowed_commands()
+    {
+      self.analyzers.scripts.allowed_commands = other.analyzers.scripts.allowed_commands;
+    }
+    if let Some(severity) = other.analyzers.env.severity {
+      self.analyzers.env.severity = Some(severity);
+    }
+    if !other.analyzers.env.allowed_env_vars.is_empty()
+      && other.analyzers.env.allowed_env_vars != default_allowed_env_vars()
+    {
+      self.analyzers.env.allowed_env_vars = other.analyzers.env.allowed_env_vars;
+    }
+
+    if let Some(enabled) = other.analyzers.network.enabled {
+      self.analyzers.network.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.network.severity {
+      self.analyzers.network.severity = Some(severity);
+    }
+    if !other.analyzers.network.allowed_hosts.is_empty()
+      && other.analyzers.network.allowed_hosts != default_allowed_hosts()
+    {
+      self.analyzers.network.allowed_hosts = other.analyzers.network.allowed_hosts;
+    }
+
+    if let Some(enabled) = other.analyzers.obfuscation.enabled {
+      self.analyzers.obfuscation.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.obfuscation.severity {
+      self.analyzers.obfuscation.severity = Some(severity);
+    }
+    if other.analyzers.obfuscation.min_string_length != default_min_string_length() {
+      self.analyzers.obfuscation.min_string_length = other.analyzers.obfuscation.min_string_length;
+    }
+
+    if let Some(enabled) = other.analyzers.buffer.enabled {
+      self.analyzers.buffer.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.buffer.severity {
+      self.analyzers.buffer.severity = Some(severity);
+    }
+    if other.analyzers.buffer.min_buffer_length != default_min_buffer_length_buffer() {
+      self.analyzers.buffer.min_buffer_length = other.analyzers.buffer.min_buffer_length;
+    }
+
+    if let Some(enabled) = other.analyzers.base64.enabled {
+      self.analyzers.base64.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.base64.severity {
+      self.analyzers.base64.severity = Some(severity);
+    }
+    if other.analyzers.base64.min_buffer_length != default_min_buffer_length_base64() {
+      self.analyzers.base64.min_buffer_length = other.analyzers.base64.min_buffer_length;
+    }
+
+    if let Some(enabled) = other.analyzers.cooldown.enabled {
+      self.analyzers.cooldown.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.cooldown.severity {
+      self.analyzers.cooldown.severity = Some(severity);
+    }
+    if other.analyzers.cooldown.hours_since_publish != default_hours_since_publish() {
+      self.analyzers.cooldown.hours_since_publish = other.analyzers.cooldown.hours_since_publish;
+    }
+
+    if let Some(enabled) = other.analyzers.dormant.enabled {
+      self.analyzers.dormant.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.dormant.severity {
+      self.analyzers.dormant.severity = Some(severity);
+    }
+    if other.analyzers.dormant.days_since_previous_publish != default_days_since_previous_publish()
+    {
+      self.analyzers.dormant.days_since_previous_publish =
+        other.analyzers.dormant.days_since_previous_publish;
+    }
+
+    if let Some(enabled) = other.analyzers.ip.enabled {
+      self.analyzers.ip.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.ip.severity {
+      self.analyzers.ip.severity = Some(severity);
+    }
+    if !other.analyzers.ip.allowed_ips.is_empty() {
+      self.analyzers.ip.allowed_ips = other.analyzers.ip.allowed_ips;
+    }
+
+    if let Some(enabled) = other.analyzers.fs.enabled {
+      self.analyzers.fs.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.fs.severity {
+      self.analyzers.fs.severity = Some(severity);
+    }
+    if !other.analyzers.fs.additional_dangerous_paths.is_empty() {
+      self.analyzers.fs.additional_dangerous_paths = other.analyzers.fs.additional_dangerous_paths;
+    }
+
+    if let Some(enabled) = other.analyzers.license.enabled {
+      self.analyzers.license.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.license.severity {
+      self.analyzers.license.severity = Some(severity);
+    }
+    if !other.analyzers.license.allowed_licenses.is_empty() {
+      self.analyzers.license.allowed_licenses = other.analyzers.license.allowed_licenses;
+    }
+
+    if let Some(enabled) = other.analyzers.typosquat.enabled {
+      self.analyzers.typosquat.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.typosquat.severity {
+      self.analyzers.typosquat.severity = Some(severity);
+    }
+    if !other.analyzers.typosquat.popular_packages.is_empty() {
+      self.analyzers.typosquat.popular_packages = other.analyzers.typosquat.popular_packages;
+    }
+
+    if let Some(enabled) = other.analyzers.reputation.enabled {
+      self.analyzers.reputation.enabled = Some(enabled);
+    }
+    if let Some(severity) = other.analyzers.reputation.severity {
+      self.analyzers.reputation.severity = Some(severity);
+    }
+    if !other.analyzers.reputation.whitelisted_users.is_empty() {
+      self.analyzers.reputation.whitelisted_users = other.analyzers.reputation.whitelisted_users;
+    }
+
+    if other.max_file_size != default_max_file_size() {
+      self.max_file_size = other.max_file_size;
+    }
+    if other.ast_timeout_ms != 0 {
+      self.ast_timeout_ms = other.ast_timeout_ms;
+    }
+    if other.cache_max_age_seconds.is_some() {
+      self.cache_max_age_seconds = other.cache_max_age_seconds;
+    }
   }
 
   pub fn is_analyzer_enabled(&self, name: &str) -> bool {
-    self.analyzers.get(name).and_then(|c| c.enabled).unwrap_or(true)
+    match name {
+      "base64" => self.analyzers.base64.enabled.unwrap_or(true),
+      "buffer" => self.analyzers.buffer.enabled.unwrap_or(true),
+      "cooldown" => self.analyzers.cooldown.enabled.unwrap_or(true),
+      "cve" => self.analyzers.cve.enabled.unwrap_or(true),
+      "deprecated" => self.analyzers.deprecated.enabled.unwrap_or(true),
+      "dormant" => self.analyzers.dormant.enabled.unwrap_or(true),
+      "dynamic" => self.analyzers.dynamic.enabled.unwrap_or(false),
+      "env" => self.analyzers.env.enabled.unwrap_or(true),
+      "eval" => self.analyzers.eval.enabled.unwrap_or(true),
+      "fs" => self.analyzers.fs.enabled.unwrap_or(true),
+      "ip" => self.analyzers.ip.enabled.unwrap_or(true),
+      "license" => self.analyzers.license.enabled.unwrap_or(true),
+      "metadata" => self.analyzers.metadata.enabled.unwrap_or(false),
+      "minified" => self.analyzers.minified.enabled.unwrap_or(true),
+      "native" => self.analyzers.native.enabled.unwrap_or(true),
+      "network" => self.analyzers.network.enabled.unwrap_or(true),
+      "obfuscation" => self.analyzers.obfuscation.enabled.unwrap_or(true),
+      "pollution" => self.analyzers.pollution.enabled.unwrap_or(true),
+      "process" => self.analyzers.process.enabled.unwrap_or(true),
+      "reputation" => self.analyzers.reputation.enabled.unwrap_or(true),
+      "scripts" => self.analyzers.scripts.enabled.unwrap_or(true),
+      "secrets" => self.analyzers.secrets.enabled.unwrap_or(true),
+      "typosquat" => self.analyzers.typosquat.enabled.unwrap_or(false),
+      _ => true,
+    }
   }
 
   pub fn get_analyzer_severity(&self, name: &str) -> Option<&str> {
-    self.analyzers.get(name).and_then(|c| c.severity.as_deref())
+    match name {
+      "base64" => self.analyzers.base64.severity.as_deref(),
+      "buffer" => self.analyzers.buffer.severity.as_deref(),
+      "cooldown" => self.analyzers.cooldown.severity.as_deref(),
+      "cve" => self.analyzers.cve.severity.as_deref(),
+      "deprecated" => self.analyzers.deprecated.severity.as_deref(),
+      "dormant" => self.analyzers.dormant.severity.as_deref(),
+      "dynamic" => self.analyzers.dynamic.severity.as_deref(),
+      "env" => self.analyzers.env.severity.as_deref(),
+      "eval" => self.analyzers.eval.severity.as_deref(),
+      "fs" => self.analyzers.fs.severity.as_deref(),
+      "ip" => self.analyzers.ip.severity.as_deref(),
+      "license" => self.analyzers.license.severity.as_deref(),
+      "metadata" => self.analyzers.metadata.severity.as_deref(),
+      "minified" => self.analyzers.minified.severity.as_deref(),
+      "native" => self.analyzers.native.severity.as_deref(),
+      "network" => self.analyzers.network.severity.as_deref(),
+      "obfuscation" => self.analyzers.obfuscation.severity.as_deref(),
+      "pollution" => self.analyzers.pollution.severity.as_deref(),
+      "process" => self.analyzers.process.severity.as_deref(),
+      "reputation" => self.analyzers.reputation.severity.as_deref(),
+      "scripts" => self.analyzers.scripts.severity.as_deref(),
+      "secrets" => self.analyzers.secrets.severity.as_deref(),
+      "typosquat" => self.analyzers.typosquat.severity.as_deref(),
+      _ => None,
+    }
   }
 }
 
@@ -270,7 +625,6 @@ pub fn add_ignore_rule(issue_id: &str, cwd: Option<&std::path::Path>) -> napi::R
 
   let base_dir = cwd.unwrap_or_else(|| std::path::Path::new("."));
 
-  // 1. Check package.json
   let package_json_path = base_dir.join("package.json");
   if package_json_path.exists() {
     if let Ok(content) = fs::read_to_string(&package_json_path) {
@@ -305,7 +659,6 @@ pub fn add_ignore_rule(issue_id: &str, cwd: Option<&std::path::Path>) -> napi::R
     }
   }
 
-  // 2. Check other config files
   let default_paths = [".depspectorrc", ".depspectorrc.json", "depspector.config.json"];
   for name in &default_paths {
     let path = base_dir.join(name);
@@ -343,7 +696,6 @@ pub fn add_ignore_rule(issue_id: &str, cwd: Option<&std::path::Path>) -> napi::R
     }
   }
 
-  // 3. Create new .depspectorrc if no config found
   let new_config = json!({
       "ignoreIssues": [issue_id]
   });
@@ -474,5 +826,24 @@ mod tests {
 
     let config: Config = serde_json::from_str(json).unwrap();
     assert!(config.include_optional_deps);
+  }
+  #[test]
+  fn test_config_merge() {
+    let mut config = Config::default();
+    config.report_level = "low".to_string(); // override default "medium"
+
+    let other = Config {
+      report_level: "high".to_string(),
+      exclude: vec!["foo".to_string()],
+      npm: NpmConfig { registry: "https://merge.registry.com".to_string(), ..NpmConfig::default() },
+      ..Config::default()
+    };
+
+    config.merge(other);
+
+    assert_eq!(config.report_level, "high");
+    assert_eq!(config.exclude, vec!["foo".to_string()]);
+    // Checks that npm config is replaced
+    assert_eq!(config.npm.registry, "https://merge.registry.com");
   }
 }

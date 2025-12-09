@@ -431,31 +431,92 @@ Example:
 
 ### Analyzer Reference
 
-| Analyzer      | Description                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `cve`         | Checks packages against OSV.dev database for known CVEs and security advisories. Configurable timeout.                    |
-| `deprecated`  | Detects packages marked as deprecated in the npm registry.                                                                |
-| `env`         | Detects access to environment variables (`process.env`). Supports `allowedEnvVars` whitelist with sensible defaults.      |
-| `network`     | Detects network requests. Supports `allowedHosts` whitelist with sensible defaults.                                       |
-| `eval`        | Flags `eval()`, `new Function()`, and `setTimeout/setInterval` with strings. Severity based on content.                   |
-| `obfuscation` | Detects suspiciously long strings (potential obfuscation). Configurable `minStringLength`.                                |
-| `fs`          | Detects access to sensitive paths. Supports `additionalDangerousPaths`.                                                   |
-| `typosquat`   | Identifies packages with names similar to popular libraries.                                                              |
-| `cooldown`    | Flags newly published packages. Configurable `hoursSincePublish`.                                                         |
-| `dormant`     | Alerts on packages updated after long inactivity. Configurable `daysSincePreviousPublish`.                                |
-| `dynamic`     | Detects `vm.runInContext()` and dynamic require patterns.                                                                 |
-| `buffer`      | Flags suspicious `Buffer.from()` usage. Configurable `minBufferLength`.                                                   |
-| `reputation`  | Checks maintainer count and publisher trustworthiness. Supports `whitelistedUsers`.                                       |
-| `scripts`     | Flags suspicious lifecycle scripts (install, postinstall, preinstall). Supports `allowedCommands` with sensible defaults. |
-| `process`     | Detects child process spawning and low-level spawn calls. Uses data flow analysis to resolve variables.                   |
-| `native`      | Alerts on packages with native bindings.                                                                                  |
-| `secrets`     | Identifies hardcoded credentials (AWS keys, private keys, API tokens).                                                    |
-| `metadata`    | Flags collection of system information (`os.userInfo()`, network interfaces).                                             |
-| `pollution`   | Detects prototype pollution attempts.                                                                                     |
-| `minified`    | Identifies minified or obfuscated code.                                                                                   |
-| `ip`          | Detects hardcoded public IP addresses. Ignores private ranges.                                                            |
-| `base64`      | Flags large Base64 blobs. Configurable `minBufferLength`.                                                                 |
-| `license`     | Detects packages using restrictive or problematic licenses. Supports `allowedLicenses` whitelist.                         |
+| Analyzer      | Default | Description                                                                                                 |
+| ------------- | :-----: | ----------------------------------------------------------------------------------------------------------- |
+| `base64`      |   ✅    | Flags large Base64 blobs. Configurable `minBufferLength`.                                                   |
+| `buffer`      |   ✅    | Flags suspicious `Buffer.from()` usage. Configurable `minBufferLength`.                                     |
+| `cooldown`    |   ✅    | Flags newly published packages. Configurable `hoursSincePublish`.                                           |
+| `cve`         |   ✅    | Checks packages against OSV.dev database for known CVEs. Configurable timeout & thresholds.                 |
+| `deprecated`  |   ✅    | Detects packages marked as deprecated in the npm registry.                                                  |
+| `dormant`     |   ✅    | Alerts on packages updated after long inactivity. Configurable `daysSincePreviousPublish`.                  |
+| `dynamic`     |   ❌    | Detects `vm.runInContext()` and dynamic require patterns. Disabled by default due to high noise.            |
+| `env`         |   ✅    | Detects access to environment variables (`process.env`). Supports `allowedEnvVars` whitelist.               |
+| `eval`        |   ✅    | Flags `eval()`, `new Function()`, and `setTimeout/setInterval` with strings. Severity based on content.     |
+| `fs`          |   ✅    | Detects access to sensitive paths. Supports `additionalDangerousPaths`.                                     |
+| `ip`          |   ✅    | Detects hardcoded public IP addresses. Ignores private ranges.                                              |
+| `license`     |   ✅    | Detects packages using restrictive or problematic licenses. Supports `allowedLicenses` whitelist.           |
+| `metadata`    |   ❌    | Flags collection of system information (`os.userInfo()`, network interfaces). Disabled by default.          |
+| `minified`    |   ✅    | Identifies minified or obfuscated code. Configurable line length and variable density.                      |
+| `native`      |   ✅    | Alerts on packages with native bindings.                                                                    |
+| `network`     |   ✅    | Detects network requests. Supports `allowedHosts` whitelist with sensible defaults.                         |
+| `obfuscation` |   ✅    | Detects suspiciously long strings (potential obfuscation). Configurable `minStringLength`.                  |
+| `pollution`   |   ✅    | Detects prototype pollution attempts.                                                                       |
+| `process`     |   ✅    | Detects child process spawning and low-level spawn calls.                                                   |
+| `reputation`  |   ✅    | Checks maintainer count and publisher trustworthiness. Supports `whitelistedUsers`.                         |
+| `scripts`     |   ✅    | Flags suspicious lifecycle scripts (install, postinstall, preinstall). Supports `allowedCommands`.          |
+| `secrets`     |   ✅    | Identifies hardcoded credentials (AWS keys, private keys, API tokens).                                      |
+| `typosquat`   |   ❌    | Identifies packages with names similar to popular libraries. Disabled by default due to performance impact. |
+
+> **Note**: Disabled analyzers (❌) can be enabled by setting `"enabled": true` in your configuration details.
+
+### Process Analyzer Configuration
+
+The `process` analyzer detects child process execution (`spawn`, `exec`, `execFile`). You can whitelist specific commands that are safe to execute:
+
+```json
+{
+  "analyzers": {
+    "process": {
+      "allowedCommands": ["git", "node", "npm"]
+    }
+  }
+}
+```
+
+| Property          | Type     | Default | Description                            |
+| ----------------- | -------- | ------- | -------------------------------------- |
+| `allowedCommands` | string[] | `[]`    | List of commands allowed to be spawned |
+
+### License Analyzer Configuration
+
+The `license` analyzer checks package licenses against a list of risky licenses. You can configure which licenses are considered risky and their severity:
+
+```json
+{
+  "analyzers": {
+    "license": {
+      "riskyLicenses": {
+        "GPL-3.0": "high",
+        "AGPL-3.0": "critical"
+      },
+      "allowedLicenses": ["MIT", "Apache-2.0"]
+    }
+  }
+}
+```
+
+| Property          | Type     | Default    | Description                                            |
+| ----------------- | -------- | ---------- | ------------------------------------------------------ |
+| `riskyLicenses`   | Object   | (defaults) | Map of license IDs to severity levels.                 |
+| `allowedLicenses` | string[] | `[]`       | List of explicitly allowed licenses (overrides risky). |
+
+### Typosquat Analyzer Configuration
+
+The `typosquat` analyzer checks for packages with names similar to popular ones. You can manually add packages to the list of popular packages:
+
+```json
+{
+  "analyzers": {
+    "typosquat": {
+      "popularPackages": ["react", "lodash", "express"]
+    }
+  }
+}
+```
+
+| Property          | Type     | Default | Description                                              |
+| ----------------- | -------- | ------- | -------------------------------------------------------- |
+| `popularPackages` | string[] | `[]`    | List of additiona popular package names to check against |
 
 ### CVE Analyzer Configuration
 
@@ -472,11 +533,20 @@ The `cve` analyzer queries the [OSV.dev](https://osv.dev) database for known vul
 {
   "analyzers": {
     "cve": {
-      "enabled": true
+      "enabled": true,
+      "cvssCritical": 9.0,
+      "cvssHigh": 7.5,
+      "cvssMedium": 4.5
     }
   }
 }
 ```
+
+| Property       | Type   | Default | Description                          |
+| -------------- | ------ | ------- | ------------------------------------ |
+| `cvssCritical` | number | `9.0`   | Minimum score for Critical severity. |
+| `cvssHigh`     | number | `7.0`   | Minimum score for High severity.     |
+| `cvssMedium`   | number | `4.0`   | Minimum score for Medium severity.   |
 
 **Note**: CVE scanning requires network access to `api.osv.dev`. Queries are made per package version and failures are silently ignored to avoid blocking analysis on network issues.
 
@@ -681,6 +751,28 @@ The `buffer` analyzer detects suspicious `Buffer.from()` usage that may indicate
 | ----------------- | ------ | ------- | ------------------------------------------------------------- |
 | `minBufferLength` | number | `100`   | Minimum length of buffer content to be flagged as suspicious. |
 
+### Minified Analyzer Configuration
+
+The `minified` analyzer identifies minified or obfuscated code using heuristics like line length and whitespace density. You can fine-tune these thresholds:
+
+```json
+{
+  "analyzers": {
+    "minified": {
+      "maxLineLength": 1000,
+      "maxWhitespaceRatio": 0.05,
+      "minCodeLength": 500
+    }
+  }
+}
+```
+
+| Property             | Type   | Default | Description                                                            |
+| -------------------- | ------ | ------- | ---------------------------------------------------------------------- |
+| `maxLineLength`      | number | `1000`  | Lines longer than this (chars) are flagged as suspicious.              |
+| `maxWhitespaceRatio` | number | `0.05`  | Files with whitespace ratio below this (e.g. 5%) are flagged.          |
+| `minCodeLength`      | number | `500`   | Minimum file size (chars) to analyze, preventing noise on small files. |
+
 ### Ip Analyzer Configuration
 
 The `ip` analyzer detects hardcoded public IP addresses. It automatically ignores private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8) and other non-routable addresses.
@@ -719,6 +811,28 @@ The `base64` analyzer flags large Base64 strings that might conceal payloads. Yo
 | Property          | Type   | Default | Description                                    |
 | ----------------- | ------ | ------- | ---------------------------------------------- |
 | `minBufferLength` | number | `1000`  | Minimum length of Base64 string to be flagged. |
+
+### Minified Analyzer Configuration
+
+The `minified` analyzer uses heuristics to detect minified or obfuscated code.
+
+```json
+{
+  "analyzers": {
+    "minified": {
+      "maxLineLength": 1000,
+      "minCodeLength": 500,
+      "maxWhitespaceRatio": 0.05
+    }
+  }
+}
+```
+
+| Property             | Type   | Default | Description                                  |
+| -------------------- | ------ | ------- | -------------------------------------------- |
+| `maxLineLength`      | number | `1000`  | Max characters per line before flagging.     |
+| `minCodeLength`      | number | `500`   | Minimum file size to apply whitespace check. |
+| `maxWhitespaceRatio` | number | `0.05`  | Max ratio of whitespace to code (5%).        |
 
 ### Cooldown Analyzer Configuration
 

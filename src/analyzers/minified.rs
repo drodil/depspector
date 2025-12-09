@@ -1,10 +1,45 @@
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
-pub struct MinifiedAnalyzer;
+use serde::{Deserialize, Serialize};
 
-const MIN_LONG_LINE_LENGTH: usize = 1000;
-const MIN_CODE_LENGTH: usize = 500;
-const MAX_WHITESPACE_RATIO: f64 = 0.05;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinifiedConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_max_line_length")]
+  pub max_line_length: usize,
+  #[serde(default = "default_min_code_length")]
+  pub min_code_length: usize,
+  #[serde(default = "default_max_whitespace_ratio")]
+  pub max_whitespace_ratio: f64,
+}
+
+pub fn default_max_line_length() -> usize {
+  1000
+}
+pub fn default_min_code_length() -> usize {
+  500
+}
+pub fn default_max_whitespace_ratio() -> f64 {
+  0.05
+}
+
+impl Default for MinifiedConfig {
+  fn default() -> Self {
+    Self {
+      enabled: None,
+      severity: None,
+      max_line_length: default_max_line_length(),
+      min_code_length: default_min_code_length(),
+      max_whitespace_ratio: default_max_whitespace_ratio(),
+    }
+  }
+}
+
+pub struct MinifiedAnalyzer;
 
 impl FileAnalyzer for MinifiedAnalyzer {
   fn name(&self) -> &'static str {
@@ -13,13 +48,14 @@ impl FileAnalyzer for MinifiedAnalyzer {
 
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
     let mut issues = vec![];
+    let config = &context.config.analyzers.minified;
 
     if let Some((line_num, line)) = context
       .source
       .lines()
       .enumerate()
       .map(|(i, line)| (i + 1, line))
-      .find(|(_, line)| line.len() > MIN_LONG_LINE_LENGTH)
+      .find(|(_, line)| line.len() > config.max_line_length)
     {
       let message = format!(
         "File contains very long lines ({} chars). It might be minified or obfuscated.",
@@ -38,11 +74,11 @@ impl FileAnalyzer for MinifiedAnalyzer {
       issues.push(issue);
     }
 
-    if context.source.len() > MIN_CODE_LENGTH {
+    if context.source.len() > config.min_code_length {
       let whitespace_count = context.source.chars().filter(|c| c.is_whitespace()).count();
       let ratio = whitespace_count as f64 / context.source.len() as f64;
 
-      if ratio < MAX_WHITESPACE_RATIO {
+      if ratio < config.max_whitespace_ratio {
         let message = "File has very low whitespace ratio. It appears to be minified.".to_string();
 
         let file_path = context.file_path.to_str().unwrap_or("unknown");

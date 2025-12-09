@@ -24,12 +24,20 @@ pub struct AiCacheEntry {
   pub timestamp: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkCacheEntry {
+  pub content: String,
+  pub timestamp: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct CacheData {
   #[serde(default)]
   packages: HashMap<String, PackageCacheEntry>,
   #[serde(default)]
   ai: HashMap<String, AiCacheEntry>,
+  #[serde(default)]
+  network: HashMap<String, NetworkCacheEntry>,
 }
 
 pub struct PackageCache {
@@ -225,6 +233,7 @@ impl PackageCache {
     }
     self.data.write().unwrap().packages.clear();
     self.data.write().unwrap().ai.clear();
+    self.data.write().unwrap().network.clear();
     Ok(())
   }
 
@@ -253,6 +262,34 @@ impl PackageCache {
       );
     }
 
+    self.save_cache()
+  }
+
+  pub fn get_network(&self, key: &str, max_age_seconds: u64) -> Option<String> {
+    let data = self.data.read().unwrap();
+    if let Some(entry) = data.network.get(key) {
+      let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+      if now.saturating_sub(entry.timestamp) <= max_age_seconds {
+        return Some(entry.content.clone());
+      }
+    }
+    None
+  }
+
+  pub fn set_network(&self, key: &str, content: String) -> Result<()> {
+    let timestamp = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .map(|d| d.as_secs())
+      .unwrap_or(0);
+
+    {
+      let mut data = self.data.write().unwrap();
+      data.network.insert(key.to_string(), NetworkCacheEntry { content, timestamp });
+    }
     self.save_cache()
   }
 }
@@ -285,6 +322,31 @@ mod tests {
     let cache2 = PackageCache::new(cache_dir.to_str().unwrap(), cwd, node_modules).unwrap();
     let entry2 = cache2.get_ai("ISSUE-1").unwrap();
     assert!(entry2.is_false_positive);
+
+    let _ = fs::remove_dir_all(&cache_dir);
+  }
+  #[test]
+  fn test_network_cache_ttl() {
+    let cache_dir = env::temp_dir().join("depspector_test_network_cache");
+    let _ = fs::remove_dir_all(&cache_dir);
+    let cwd = Path::new(".");
+    let node_modules = Path::new("node_modules");
+
+    let cache = PackageCache::new(cache_dir.to_str().unwrap(), cwd, node_modules).unwrap();
+
+    cache.set_network("key1", "data".to_string()).unwrap();
+
+    // Immediate fetch should work
+    assert_eq!(cache.get_network("key1", 10).unwrap(), "data");
+
+    // Sleep a bit to ensure time passes
+    std::thread::sleep(std::time::Duration::from_millis(2100));
+
+    // Expired fetch (max_age=1s) should return None
+    assert!(cache.get_network("key1", 1).is_none());
+
+    // With large TTL it should still be there
+    assert_eq!(cache.get_network("key1", 3600).unwrap(), "data");
 
     let _ = fs::remove_dir_all(&cache_dir);
   }

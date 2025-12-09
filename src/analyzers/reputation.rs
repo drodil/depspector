@@ -2,6 +2,25 @@ use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReputationConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default)]
+  pub whitelisted_users: Vec<String>,
+}
+
+impl Default for ReputationConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, whitelisted_users: Vec::new() }
+  }
+}
+
 #[derive(Default)]
 pub struct ReputationAnalyzer;
 
@@ -37,9 +56,7 @@ impl PackageAnalyzer for ReputationAnalyzer {
       None => return issues,
     };
 
-    let reputation_config = context.config.get_analyzer_config("reputation");
-    let whitelisted_users: Vec<String> =
-      reputation_config.and_then(|c| c.whitelisted_users.clone()).unwrap_or_default();
+    let whitelisted_users = &context.config.analyzers.reputation.whitelisted_users;
 
     if let Some(ref publisher) = version_data.npm_user {
       if whitelisted_users.contains(&publisher.name) {

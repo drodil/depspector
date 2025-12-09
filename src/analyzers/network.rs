@@ -55,6 +55,29 @@ lazy_static! {
   static ref QUICK_CHECK: AhoCorasick = AhoCorasick::new(QUICK_CHECK_PATTERNS).unwrap();
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_allowed_hosts")]
+  pub allowed_hosts: Vec<String>,
+}
+
+pub fn default_allowed_hosts() -> Vec<String> {
+  DEFAULT_ALLOWED_HOSTS.iter().map(|s| s.to_string()).collect()
+}
+
+impl Default for NetworkConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, allowed_hosts: default_allowed_hosts() }
+  }
+}
+
 pub struct NetworkAnalyzer;
 
 struct NetworkVisitor<'a> {
@@ -182,10 +205,7 @@ impl FileAnalyzer for NetworkAnalyzer {
       return vec![];
     }
 
-    let config = context.config.get_analyzer_config(self.name());
-    let allowed_hosts: Vec<String> = config
-      .and_then(|c| c.allowed_hosts.clone())
-      .unwrap_or_else(|| DEFAULT_ALLOWED_HOSTS.iter().map(|s| s.to_string()).collect());
+    let allowed_hosts = &context.config.analyzers.network.allowed_hosts;
 
     // Use pre-built variable map from ParsedAst for resolving identifier arguments
     let variable_map = context.parsed_ast.map(|ast| ast.variable_map.clone()).unwrap_or_default();
@@ -196,7 +216,7 @@ impl FileAnalyzer for NetworkAnalyzer {
       file_path: context.file_path.to_str().unwrap_or(""),
       package_name: context.package_name,
       line_index: LineIndex::new(context.source),
-      allowed_hosts,
+      allowed_hosts: allowed_hosts.iter().cloned().collect(),
       variable_map,
     };
 
@@ -261,11 +281,7 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let analyzer_config = crate::config::AnalyzerConfig {
-      allowed_hosts: Some(vec!["example.com".to_string()]),
-      ..Default::default()
-    };
-    config.analyzers.insert("network".to_string(), analyzer_config);
+    config.analyzers.network.allowed_hosts.push("example.com".to_string());
 
     let source = r#"fetch("https://api.example.com/data");"#;
 

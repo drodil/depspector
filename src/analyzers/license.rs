@@ -2,10 +2,49 @@ use async_trait::async_trait;
 
 use super::{Issue, PackageAnalyzer, PackageContext, Severity};
 
-const RESTRICTIVE_LICENSES: &[&str] =
-  &["GPL", "AGPL", "GPLV2", "GPLV3", "GPL-2.0", "GPL-3.0", "AGPL-3.0", "SSPL", "EUPL-1.2"];
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-const MODERATE_LICENSES: &[&str] = &["MPL", "MPL-2.0", "CDDL", "CPAL"];
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LicenseConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default)]
+  pub allowed_licenses: Vec<String>,
+  #[serde(default = "default_risky_licenses")]
+  pub risky_licenses: HashMap<String, String>,
+}
+
+fn default_risky_licenses() -> HashMap<String, String> {
+  let mut map = HashMap::new();
+  // Restrictive licenses - High severity
+  map.insert("GPL ".to_string(), "high".to_string());
+  map.insert("GPL-".to_string(), "high".to_string());
+  map.insert("AGPL".to_string(), "high".to_string());
+  map.insert("SSPL".to_string(), "high".to_string());
+  map.insert("EUPL-1.2".to_string(), "high".to_string());
+
+  // Moderate licenses
+  map.insert("MPL".to_string(), "medium".to_string());
+  map.insert("CDDL".to_string(), "medium".to_string());
+  map.insert("CPAL".to_string(), "medium".to_string());
+
+  map
+}
+
+impl Default for LicenseConfig {
+  fn default() -> Self {
+    Self {
+      enabled: None,
+      severity: None,
+      allowed_licenses: Vec::new(),
+      risky_licenses: default_risky_licenses(),
+    }
+  }
+}
 
 pub struct LicenseAnalyzer;
 
@@ -42,48 +81,32 @@ impl PackageAnalyzer for LicenseAnalyzer {
       }
     };
 
-    let license_config = context.config.get_analyzer_config("license");
-    let allowed_licenses: Vec<String> =
-      license_config.and_then(|c| c.allowed_licenses.clone()).unwrap_or_default();
+    let allowed_licenses = &context.config.analyzers.license.allowed_licenses;
 
     if allowed_licenses.contains(&license_str.to_string()) {
       return issues;
     }
 
     let license_upper = license_str.to_uppercase();
+    let risky_licenses = &context.config.analyzers.license.risky_licenses;
 
-    for restrictive in RESTRICTIVE_LICENSES {
-      if license_upper.contains(restrictive) {
-        let message = format!(
-          "Package uses {} license which requires derivative works to be published under the same license.",
-          license_str
-        );
+    for (key, severity_str) in risky_licenses {
+      if license_upper.contains(&key.to_uppercase()) {
+        let severity = match severity_str.to_lowercase().as_str() {
+          "critical" => Severity::Critical,
+          "high" => Severity::High,
+          "medium" | "moderate" => Severity::Medium,
+          _ => Severity::Low,
+        };
 
-        let package_json_str =
-          serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
-        let line = crate::util::find_line_in_json(&package_json_str, "license").unwrap_or(0);
-
-        let mut issue = Issue::new(self.name(), message, Severity::High, "package.json")
-          .with_package_name(context.name);
-        if line > 0 {
-          issue = issue.with_line(line);
-        }
-        issues.push(issue);
-        return issues;
-      }
-    }
-
-    for moderate in MODERATE_LICENSES {
-      if license_upper.contains(moderate) {
         let message =
-          format!("Package uses {} license which requires source code attribution.", license_str);
+          format!("Package uses {} license which is flagged as {}.", license_str, severity_str);
 
-        // Use pretty print to preserve line structure for line number detection
         let package_json_str =
           serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
         let line = crate::util::find_line_in_json(&package_json_str, "license").unwrap_or(0);
 
-        let mut issue = Issue::new(self.name(), message, Severity::Medium, "package.json")
+        let mut issue = Issue::new(self.name(), message, severity, "package.json")
           .with_package_name(context.name);
         if line > 0 {
           issue = issue.with_line(line);
@@ -238,11 +261,7 @@ mod tests {
     let analyzer = LicenseAnalyzer;
     let mut config = crate::config::Config::default();
 
-    let analyzer_config = crate::config::AnalyzerConfig {
-      allowed_licenses: Some(vec!["GPL-3.0".to_string()]),
-      ..Default::default()
-    };
-    config.analyzers.insert("license".to_string(), analyzer_config);
+    config.analyzers.license.allowed_licenses.push("GPL-3.0".to_string());
 
     let package_json = serde_json::json!({
       "name": "test-package",

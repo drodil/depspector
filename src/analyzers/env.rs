@@ -1,7 +1,9 @@
 use aho_corasick::AhoCorasick;
 use lazy_static::lazy_static;
 
-use crate::ast::{walk_ast_filtered, AstVisitor, DestructureInfo, MemberAccessInfo, NodeInterest};
+use crate::ast::{
+  walk_ast_filtered, AstVisitor, DestructureInfo, MemberAccessInfo, NodeInterest, VariableMap,
+};
 use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
@@ -45,7 +47,30 @@ lazy_static! {
   static ref QUICK_CHECK: AhoCorasick = AhoCorasick::new(["process.env", "process["]).unwrap();
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_allowed_env_vars")]
+  pub allowed_env_vars: Vec<String>,
+}
+
+impl Default for EnvConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, allowed_env_vars: default_allowed_env_vars() }
+  }
+}
+
 pub struct EnvAnalyzer;
+
+pub fn default_allowed_env_vars() -> Vec<String> {
+  DEFAULT_ALLOWED_ENV_VARS.iter().map(|s| s.to_string()).collect()
+}
 
 struct EnvVisitor<'a> {
   issues: Vec<Issue>,
@@ -54,6 +79,7 @@ struct EnvVisitor<'a> {
   package_name: Option<&'a str>,
   line_index: LineIndex,
   allowed_vars: Vec<String>,
+  _variable_map: VariableMap,
 }
 
 impl EnvVisitor<'_> {
@@ -131,10 +157,10 @@ impl FileAnalyzer for EnvAnalyzer {
       return vec![];
     }
 
-    let config = context.config.get_analyzer_config(self.name());
-    let allowed_vars: Vec<String> = config
-      .and_then(|c| c.allowed_env_vars.clone())
-      .unwrap_or_else(|| DEFAULT_ALLOWED_ENV_VARS.iter().map(|s| s.to_string()).collect());
+    let allowed_env_vars = &context.config.analyzers.env.allowed_env_vars;
+
+    // Use pre-built variable map from ParsedAst for resolving identifier arguments
+    let variable_map = context.parsed_ast.map(|ast| ast.variable_map.clone()).unwrap_or_default();
 
     let mut visitor = EnvVisitor {
       issues: vec![],
@@ -142,7 +168,8 @@ impl FileAnalyzer for EnvAnalyzer {
       file_path: context.file_path.to_str().unwrap_or(""),
       package_name: context.package_name,
       line_index: LineIndex::new(context.source),
-      allowed_vars,
+      allowed_vars: allowed_env_vars.iter().cloned().collect(),
+      _variable_map: variable_map,
     };
 
     let interest = NodeInterest::none().with_member_accesses().with_destructures();
@@ -158,12 +185,12 @@ mod tests {
   use std::path::PathBuf;
 
   #[test]
-  fn test_detects_env_access() {
+  fn test_detects_unsafe_env_access() {
     let analyzer = EnvAnalyzer;
     let config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let source = r#"const apiKey = process.env.API_KEY;"#;
+    let source = r#"const token = process.env.AWS_SECRET_KEY;"#;
 
     let context = FileContext {
       source,
@@ -176,8 +203,51 @@ mod tests {
     let issues = analyzer.analyze(&context);
 
     assert_eq!(issues.len(), 1);
-    assert!(issues[0].message.contains("API_KEY"));
-    assert_eq!(issues[0].severity, Severity::Medium); // API_KEY should be medium
+    assert_eq!(issues[0].severity, Severity::Medium); // AWS_SECRET_KEY should be medium
+    assert!(issues[0].message.contains("AWS_SECRET_KEY"));
+  }
+
+  #[test]
+  fn test_ignores_safe_env_vars() {
+    let analyzer = EnvAnalyzer;
+    let config = crate::config::Config::default();
+    let file_path = PathBuf::from("test.js");
+
+    let source = r#"if (process.env.NODE_ENV === 'production') {}"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(issues.is_empty());
+  }
+
+  #[test]
+  fn test_allowed_env_vars_config() {
+    let analyzer = EnvAnalyzer;
+    let mut config = crate::config::Config::default();
+    config.analyzers.env.allowed_env_vars.push("MY_CUSTOM_VAR".to_string());
+
+    let file_path = PathBuf::from("test.js");
+    let source = r#"const val = process.env.MY_CUSTOM_VAR;"#;
+
+    let context = FileContext {
+      source,
+      file_path: &file_path,
+      package_name: Some("test-package"),
+      package_version: Some("1.0.0"),
+      config: &config,
+      parsed_ast: None,
+    };
+    let issues = analyzer.analyze(&context);
+
+    assert!(issues.is_empty());
   }
 
   #[test]
@@ -256,11 +326,7 @@ mod tests {
     let file_path = PathBuf::from("test.js");
 
     // Override defaults with custom allowed list including CUSTOM_VAR
-    let analyzer_config = crate::config::AnalyzerConfig {
-      allowed_env_vars: Some(vec!["CUSTOM_VAR".to_string()]),
-      ..Default::default()
-    };
-    config.analyzers.insert("env".to_string(), analyzer_config);
+    config.analyzers.env.allowed_env_vars.push("CUSTOM_VAR".to_string());
 
     let source = r#"const env = process.env.CUSTOM_VAR;"#;
 

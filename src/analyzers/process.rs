@@ -5,6 +5,24 @@ use crate::ast::{walk_ast_filtered, ArgInfo, AstVisitor, CallInfo, NodeInterest,
 use crate::util::LineIndex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default)]
+  pub allowed_commands: Vec<String>,
+}
+
+impl Default for ProcessConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, allowed_commands: Vec::new() }
+  }
+}
 
 const CHILD_PROCESS_METHODS: &[&str] =
   &["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync", "fork"];
@@ -265,11 +283,7 @@ impl FileAnalyzer for ProcessAnalyzer {
       return vec![];
     }
 
-    let allowed_commands = context
-      .config
-      .get_analyzer_config("process")
-      .and_then(|c| c.allowed_commands.clone())
-      .unwrap_or_default();
+    let allowed_commands = context.config.analyzers.process.allowed_commands.clone();
 
     let empty_map = VariableMap::default();
     let variable_map = context.parsed_ast.map(|ast| &ast.variable_map).unwrap_or(&empty_map);
@@ -589,11 +603,7 @@ spawn(config.binary, ['-c', 'echo hello']);
     let file_path = PathBuf::from("test.js");
 
     // Configure allowed commands
-    let analyzer_config = crate::config::AnalyzerConfig {
-      allowed_commands: Some(vec!["git".to_string(), "node".to_string()]),
-      ..Default::default()
-    };
-    config.analyzers.insert("process".to_string(), analyzer_config);
+    config.analyzers.process.allowed_commands = vec!["git".to_string(), "node".to_string()];
 
     let source = r#"
 const { execSync } = require('child_process');

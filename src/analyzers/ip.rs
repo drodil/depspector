@@ -10,6 +10,25 @@ lazy_static! {
   .unwrap();
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default)]
+  pub allowed_ips: Vec<String>,
+}
+
+impl Default for IpConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, allowed_ips: Vec::new() }
+  }
+}
+
 pub struct IpAnalyzer;
 
 impl FileAnalyzer for IpAnalyzer {
@@ -28,8 +47,7 @@ impl FileAnalyzer for IpAnalyzer {
       return issues;
     };
 
-    let config = context.config.get_analyzer_config(self.name());
-    let allowed_ips = config.and_then(|c| c.allowed_ips.clone()).unwrap_or_default();
+    let allowed_ips = &context.config.analyzers.ip.allowed_ips;
 
     // file_path not needed here; other variables use `context.file_path` directly
 
@@ -171,11 +189,7 @@ mod tests {
     let analyzer = IpAnalyzer;
     let mut config = crate::config::Config::default();
 
-    let analyzer_config = crate::config::AnalyzerConfig {
-      allowed_ips: Some(vec!["8.8.8.8".to_string()]),
-      ..Default::default()
-    };
-    config.analyzers.insert("ip".to_string(), analyzer_config);
+    config.analyzers.ip.allowed_ips.push("8.8.8.8".to_string());
 
     let file_path = PathBuf::from("test.js");
     let source = "const ip = '8.8.8.8';";

@@ -37,6 +37,23 @@ const SUSPICIOUS_OS_METHODS: &[&str] = &[
   "tmpdir",
 ];
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+}
+
+impl Default for MetadataConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None }
+  }
+}
+
 pub struct MetadataAnalyzer;
 
 struct MetadataVisitor<'a> {

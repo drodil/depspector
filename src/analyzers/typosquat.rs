@@ -56,6 +56,25 @@ const POPULAR_PACKAGES: &[&str] = &[
   "electron",
 ];
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TyposquatConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default)]
+  pub popular_packages: Vec<String>,
+}
+
+impl Default for TyposquatConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, popular_packages: Vec::new() }
+  }
+}
+
 pub struct TyposquatAnalyzer;
 
 #[async_trait]
@@ -68,9 +87,7 @@ impl PackageAnalyzer for TyposquatAnalyzer {
     let mut issues = vec![];
     let pkg_name = context.name;
 
-    let config = context.config.get_analyzer_config("typosquat");
-    let additional_packages: Vec<String> =
-      config.and_then(|c| c.popular_packages.clone()).unwrap_or_default();
+    let additional_packages = &context.config.analyzers.typosquat.popular_packages;
 
     let package_json_str = serde_json::to_string_pretty(&context.package_json).unwrap_or_default();
 
@@ -89,7 +106,7 @@ impl PackageAnalyzer for TyposquatAnalyzer {
     }
 
     let mut packages_to_check: Vec<&str> = POPULAR_PACKAGES.to_vec();
-    for pkg in &additional_packages {
+    for pkg in additional_packages {
       packages_to_check.push(pkg.as_str());
     }
 

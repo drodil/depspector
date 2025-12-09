@@ -1,19 +1,11 @@
+use base64::{engine::general_purpose::STANDARD, Engine};
 use napi::bindgen_prelude::Result;
 use reqwest::Client;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
 
 use crate::config::NpmConfig;
 
 const DEFAULT_REGISTRY_URL: &str = "https://registry.npmjs.org";
-
-lazy_static::lazy_static! {
-  /// Cache key format: "name@version" for version-specific caching
-  static ref GLOBAL_METADATA_CACHE: Arc<RwLock<HashMap<String, PackageMetadata>>> = Arc::new(RwLock::new(HashMap::new()));
-}
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct PackageVersion {
@@ -92,7 +84,6 @@ impl Registry {
     }
 
     if let (Some(ref username), Some(ref password)) = (&config.username, &config.password) {
-      use base64::{engine::general_purpose::STANDARD, Engine};
       let credentials = format!("{}:{}", username, password);
       let encoded = STANDARD.encode(credentials.as_bytes());
       return Some(format!("Basic {}", encoded));
@@ -152,71 +143,6 @@ impl Registry {
       last_error
         .unwrap_or_else(|| napi::Error::from_reason("Registry request failed after retries")),
     )
-  }
-
-  fn ensure_dir(path: &Path) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-      fs::create_dir_all(parent)?;
-    }
-    Ok(())
-  }
-
-  fn metadata_cache_path(cache_dir: &str, name: &str, version: &str) -> PathBuf {
-    Path::new(cache_dir)
-      .join("registry")
-      .join("metadata")
-      .join(format!("{}@{}.json", name, version))
-  }
-
-  fn cache_key(name: &str, version: &str) -> String {
-    format!("{}@{}", name, version)
-  }
-
-  pub async fn get_package_cached(
-    &self,
-    name: &str,
-    version: &str,
-    cache_dir: &str,
-  ) -> Result<PackageMetadata> {
-    let cache_key = Self::cache_key(name, version);
-
-    {
-      let cache = GLOBAL_METADATA_CACHE.read().unwrap();
-      if let Some(meta) = cache.get(&cache_key) {
-        return Ok(meta.clone());
-      }
-    }
-
-    let path = Self::metadata_cache_path(cache_dir, name, version);
-    if path.exists() {
-      if let Ok(content) = fs::read_to_string(&path) {
-        if let Ok(meta) = serde_json::from_str::<PackageMetadata>(&content) {
-          {
-            let mut cache = GLOBAL_METADATA_CACHE.write().unwrap();
-            cache.insert(cache_key.clone(), meta.clone());
-          }
-          return Ok(meta);
-        }
-      }
-    }
-
-    let meta = self.get_package(name).await?;
-
-    {
-      let mut cache = GLOBAL_METADATA_CACHE.write().unwrap();
-      cache.insert(cache_key, meta.clone());
-    }
-
-    if let Ok(content) = serde_json::to_string(&meta) {
-      let _ = Self::ensure_dir(&path);
-      let _ = fs::write(path, content);
-    }
-    Ok(meta)
-  }
-
-  pub fn clear_memory_cache() {
-    let mut cache = GLOBAL_METADATA_CACHE.write().unwrap();
-    cache.clear();
   }
 }
 

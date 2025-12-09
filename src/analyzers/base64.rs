@@ -7,6 +7,29 @@ lazy_static! {
     Regex::new(r#"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?"#).unwrap();
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Base64Config {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_min_buffer_length_base64")]
+  pub min_buffer_length: usize,
+}
+
+pub fn default_min_buffer_length_base64() -> usize {
+  DEFAULT_MIN_LENGTH
+}
+
+impl Default for Base64Config {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, min_buffer_length: default_min_buffer_length_base64() }
+  }
+}
+
 pub struct Base64Analyzer;
 
 const DEFAULT_MIN_LENGTH: usize = 1000;
@@ -19,8 +42,7 @@ impl FileAnalyzer for Base64Analyzer {
   fn analyze(&self, context: &FileContext) -> Vec<Issue> {
     let mut issues = vec![];
 
-    let config = context.config.get_analyzer_config(self.name());
-    let min_length = config.and_then(|c| c.min_buffer_length).unwrap_or(DEFAULT_MIN_LENGTH);
+    let min_length = context.config.analyzers.base64.min_buffer_length;
 
     let mut current_start = 0;
     let mut in_potential_base64 = false;
@@ -104,9 +126,7 @@ mod tests {
     let mut config = crate::config::Config::default();
 
     // Set low threshold for testing
-    let analyzer_config =
-      crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
-    config.analyzers.insert("base64".to_string(), analyzer_config);
+    config.analyzers.base64.min_buffer_length = 10;
 
     let file_path = PathBuf::from("test.js");
     let b64_str = "SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0IHN0cmluZyBmb3IgQmFzZTY0";

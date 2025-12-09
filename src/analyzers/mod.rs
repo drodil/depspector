@@ -870,7 +870,8 @@ impl Analyzer {
       work_items.iter().map(|wi| crate::prefetch::PackageId::new(&wi.name, &wi.version)).collect();
 
     let prefetcher = crate::prefetch::Prefetcher::new(&ctx.config.npm);
-    let data = prefetcher.prefetch(&package_ids, &ctx.config.cache_dir, ctx.concurrency).await;
+    let data =
+      prefetcher.prefetch(&package_ids, &ctx.config.cache_dir, ctx.concurrency, ctx.cache).await;
     Some(Arc::new(data))
   }
 
@@ -1188,8 +1189,8 @@ mod analyzer_tests {
     let config = Config::default();
     let analyzer = Analyzer::new(&config, false, None);
 
-    assert_eq!(analyzer.file_analyzer_count(), 14);
-    assert_eq!(analyzer.package_analyzer_count(), 9);
+    assert_eq!(analyzer.file_analyzer_count(), 12);
+    assert_eq!(analyzer.package_analyzer_count(), 8);
   }
 
   #[test]
@@ -1198,18 +1199,16 @@ mod analyzer_tests {
     let analyzer = Analyzer::new(&config, true, None);
 
     assert!(analyzer.is_offline());
-    assert_eq!(analyzer.package_analyzer_count(), 4);
+    assert_eq!(analyzer.package_analyzer_count(), 3);
   }
 
   #[test]
   fn test_disabled_analyzer() {
     let mut config = Config::default();
-    let analyzer_config =
-      crate::config::AnalyzerConfig { enabled: Some(false), ..Default::default() };
-    config.analyzers.insert("buffer".to_string(), analyzer_config);
+    config.analyzers.buffer.enabled = Some(false);
 
     let analyzer = Analyzer::new(&config, false, None);
-    assert_eq!(analyzer.file_analyzer_count(), 13);
+    assert_eq!(analyzer.file_analyzer_count(), 11);
   }
 
   #[test]

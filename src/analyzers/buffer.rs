@@ -3,6 +3,29 @@ use regex::Regex;
 
 use super::{FileAnalyzer, FileContext, Issue, Severity};
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BufferConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default = "default_min_buffer_length_buffer")]
+  pub min_buffer_length: usize,
+}
+
+pub fn default_min_buffer_length_buffer() -> usize {
+  100
+}
+
+impl Default for BufferConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, min_buffer_length: default_min_buffer_length_buffer() }
+  }
+}
+
 pub struct BufferAnalyzer;
 
 lazy_static! {
@@ -22,8 +45,7 @@ impl FileAnalyzer for BufferAnalyzer {
 
     let mut issues = vec![];
 
-    let config = context.config.get_analyzer_config(self.name());
-    let min_length = config.and_then(|c| c.min_buffer_length).unwrap_or(100);
+    let min_length = context.config.analyzers.buffer.min_buffer_length;
 
     for (line_num, line) in context.source.lines().enumerate() {
       if !line.contains("Buffer.") {
@@ -112,9 +134,7 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let analyzer_config =
-      crate::config::AnalyzerConfig { min_buffer_length: Some(10), ..Default::default() };
-    config.analyzers.insert("buffer".to_string(), analyzer_config);
+    config.analyzers.buffer.min_buffer_length = 10;
 
     let source = r#"const buf = Buffer.from("hello world!");"#;
 

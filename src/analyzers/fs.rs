@@ -65,6 +65,25 @@ const DEFAULT_DANGEROUS_PATHS: &[&str] = &[
   "NTUSER.DAT",
 ];
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsConfig {
+  #[serde(default)]
+  pub enabled: Option<bool>,
+  #[serde(default)]
+  pub severity: Option<String>,
+  #[serde(default)]
+  pub additional_dangerous_paths: Vec<String>,
+}
+
+impl Default for FsConfig {
+  fn default() -> Self {
+    Self { enabled: None, severity: None, additional_dangerous_paths: Vec::new() }
+  }
+}
+
 pub struct FsAnalyzer;
 
 struct FsVisitor<'a> {
@@ -125,12 +144,10 @@ impl FileAnalyzer for FsAnalyzer {
       return vec![];
     }
 
-    let config = context.config.get_analyzer_config(self.name());
-    let additional_paths: Vec<String> =
-      config.and_then(|c| c.additional_dangerous_paths.clone()).unwrap_or_default();
+    let additional_paths = &context.config.analyzers.fs.additional_dangerous_paths;
 
     let mut dangerous_paths: Vec<&str> = DEFAULT_DANGEROUS_PATHS.to_vec();
-    for path in &additional_paths {
+    for path in additional_paths {
       dangerous_paths.push(path.as_str());
     }
 
@@ -255,11 +272,7 @@ mod tests {
     let mut config = crate::config::Config::default();
     let file_path = PathBuf::from("test.js");
 
-    let analyzer_config = crate::config::AnalyzerConfig {
-      additional_dangerous_paths: Some(vec!["/custom/secret/path".to_string()]),
-      ..Default::default()
-    };
-    config.analyzers.insert("fs".to_string(), analyzer_config);
+    config.analyzers.fs.additional_dangerous_paths.push("/custom/secret/path".to_string());
 
     let source = r#"fs.readFile('/custom/secret/path/data.json');"#;
 
