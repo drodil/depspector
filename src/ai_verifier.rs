@@ -24,6 +24,7 @@ struct IssueResult {
   is_false_positive: bool,
   reason: Option<String>,
   confidence: Option<f32>,
+  proposed_severity: Option<String>,
 }
 
 pub struct AiVerifier {
@@ -176,6 +177,12 @@ impl AiVerifier {
               issue.ai_reason = res.reason.clone();
               issue.ai_confidence = res.confidence;
 
+              if let Some(sev_str) = &res.proposed_severity {
+                if let Ok(new_severity) = Severity::from_str(sev_str) {
+                  issue.severity = new_severity;
+                }
+              }
+
               if let Some(cache) = &self.cache {
                 let _ =
                   cache.set_ai(&res.id, res.is_false_positive, res.reason.clone(), res.confidence);
@@ -225,7 +232,9 @@ impl AiVerifier {
     let toon_batch = serde_toon::to_string(batch).unwrap();
     let prompt = format!(
       "Analyze the following list of potentially insecure code snippets from npm packages.\n\
-      For EACH item, determine if it is a FALSE POSITIVE (safe/intentional/not a vulnerability).\n\
+      For EACH item:\n\
+      1. Determine if it is a FALSE POSITIVE (safe/intentional/not a vulnerability).\n\
+      2. If it is a true positive, assess the SEVERITY (critical, high, medium, low) based on the context.\n\
       \n\
       Input TOON (Token-Oriented Object Notation):\n\
       ```toon\n\
@@ -233,7 +242,7 @@ impl AiVerifier {
       ```\n\
       \n\
       Return ONLY a JSON object with a 'results' array matching the IDs:\n\
-      {{ \"results\": [ {{ \"id\": \"...\", \"is_false_positive\": boolean, \"reason\": \"short reason\", \"confidence\": float (0.0-1.0) }}, ... ] }}",
+      {{ \"results\": [ {{ \"id\": \"...\", \"is_false_positive\": boolean, \"reason\": \"short reason\", \"confidence\": float (0.0-1.0), \"proposed_severity\": \"low|medium|high|critical\" (optional) }}, ... ] }}",
       toon_batch
     );
 

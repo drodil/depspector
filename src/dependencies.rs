@@ -221,6 +221,8 @@ impl DependencyGraph {
     use walkdir::WalkDir;
 
     let mut all_node_modules_packages = Vec::new();
+    let mut seen_packages: std::collections::HashSet<(String, String)> =
+      std::collections::HashSet::new();
 
     for entry in WalkDir::new(node_modules_path)
       .follow_links(false)
@@ -234,6 +236,12 @@ impl DependencyGraph {
           continue;
         }
 
+        let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
+
+        if seen_packages.contains(&(name.clone(), version.clone())) {
+          continue;
+        }
+
         if let Some(pkg_path) = entry.path().parent() {
           if pkg_path.components().any(|c| {
             let s = c.as_os_str().to_string_lossy();
@@ -242,7 +250,6 @@ impl DependencyGraph {
             continue;
           }
 
-          let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
           let deps: Vec<String> = pkg
             .get("dependencies")
             .and_then(|v| v.as_object())
@@ -265,8 +272,8 @@ impl DependencyGraph {
             .unwrap_or_default();
 
           all_node_modules_packages.push(PackageInfo {
-            name,
-            version,
+            name: name.clone(),
+            version: version.clone(),
             path: pkg_path.to_path_buf(),
             package_json: pkg,
             dependency_type: DependencyType::Unknown,
@@ -278,6 +285,8 @@ impl DependencyGraph {
             optional_dependencies: optional_deps,
             peer_dependencies: peer_deps,
           });
+
+          seen_packages.insert((name, version));
         }
       }
     }

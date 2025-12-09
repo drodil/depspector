@@ -244,7 +244,7 @@ impl Reporter {
     .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; color: #2c3e50; }
     h2 { margin-top: 30px; color: #34495e; }
-    .issue { border: 1px solid #eee; margin-bottom: 15px; padding: 15px; border-radius: 6px; background: #fff; border-left-width: 5px; }
+    .issue { border: 1px solid #eee; margin: 15px; padding: 15px; border-radius: 6px; background: #fff; border-left-width: 5px; }
     .critical { border-left-color: #e74c3c; background: #fdf2f2; }
     .high { border-left-color: #e67e22; background: #fcf6f0; }
     .medium { border-left-color: #f1c40f; background: #fcfaf2; }
@@ -259,6 +259,20 @@ impl Reporter {
     .badge.medium { background: #f1c40f;color: #333; }
     .badge.low { background: #3498db; }
     .mermaid { margin: 20px 0; padding: 20px; background: #fff; border: 1px solid #eee; border-radius: 4px; overflow: auto; text-align: center; }
+    
+    /* New styles for expander */
+    details { margin-bottom: 10px; border: 1px solid #eee; border-radius: 6px; background: white; overflow: hidden; }
+    summary { padding: 15px; cursor: pointer; background: #f8f9fa; display: flex; align-items: center; justify-content: space-between; font-weight: bold; user-select: none; }
+    summary:hover { background: #e9ecef; }
+    details[open] summary { border-bottom: 1px solid #eee; }
+    .package-header { display: flex; align-items: center; gap: 10px; }
+    .package-counts { display: flex; gap: 8px; }
+    .count-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.8em; color: white; min-width: 20px; text-align: center; font-weight: bold; }
+    .bg-critical { background-color: #e74c3c; }
+    .bg-high { background-color: #e67e22; }
+    .bg-medium { background-color: #f1c40f; color: #333; }
+    .bg-low { background-color: #3498db; }
+    .trust-score { font-size: 0.9em; color: #666; font-weight: normal; }
   </style>
 </head>
 <body>
@@ -299,18 +313,69 @@ impl Reporter {
     html.push_str("</div>");
 
     html.push_str("<h2>Issues Details</h2>");
-    for res in results {
+
+    let mut sorted_results: Vec<_> = results.iter().collect();
+    sorted_results.sort_by(|a, b| {
+      let pkg_a = a.package.as_deref().unwrap_or("unknown");
+      let pkg_b = b.package.as_deref().unwrap_or("unknown");
+      pkg_a.cmp(pkg_b)
+    });
+
+    for res in sorted_results {
       if res.issues.is_empty() {
         continue;
       }
 
-      for issue in &res.issues {
+      let pkg_critical = res.issues.iter().filter(|i| i.severity == Severity::Critical).count();
+      let pkg_high = res.issues.iter().filter(|i| i.severity == Severity::High).count();
+      let pkg_medium = res.issues.iter().filter(|i| i.severity == Severity::Medium).count();
+      let pkg_low = res.issues.iter().filter(|i| i.severity == Severity::Low).count();
+
+      let package_name = res.package.as_deref().unwrap_or("unknown");
+      let version = res.version.as_deref().unwrap_or("0.0.0");
+      let trust_info = format!("{:.0}", res.trust_score.score);
+
+      html.push_str("<details>");
+      html.push_str("<summary>");
+
+      html.push_str("<div class=\"package-header\">");
+      html.push_str(&format!("<span>{}@{}</span>", package_name, version));
+      html.push_str(&format!("<span class=\"trust-score\">Trust Score: {}</span>", trust_info));
+      html.push_str("</div>");
+
+      html.push_str("<div class=\"package-counts\">");
+      if pkg_critical > 0 {
+        html.push_str(&format!(
+          "<span class=\"count-badge bg-critical\">{} Critical</span>",
+          pkg_critical
+        ));
+      }
+      if pkg_high > 0 {
+        html.push_str(&format!("<span class=\"count-badge bg-high\">{} High</span>", pkg_high));
+      }
+      if pkg_medium > 0 {
+        html
+          .push_str(&format!("<span class=\"count-badge bg-medium\">{} Medium</span>", pkg_medium));
+      }
+      if pkg_low > 0 {
+        html.push_str(&format!("<span class=\"count-badge bg-low\">{} Low</span>", pkg_low));
+      }
+      html.push_str("</div>");
+
+      html.push_str("</summary>");
+
+      let mut sorted_issues = res.issues.clone();
+      sorted_issues.sort_by(|a, b| b.severity.cmp(&a.severity));
+
+      html.push_str("<div>");
+      for issue in &sorted_issues {
         let severity_class = match issue.severity {
           Severity::Critical => "critical",
           Severity::High => "high",
           Severity::Medium => "medium",
           Severity::Low => "low",
         };
+
         html.push_str(&format!(
           "<div class=\"issue {}\"><h3><span class=\"badge {}\">{}</span> {}</h3>",
           severity_class,
@@ -320,12 +385,6 @@ impl Reporter {
         ));
 
         html.push_str("<div class=\"meta\">");
-        html.push_str(&format!(
-          "<div><strong>Package:</strong> {}@{}</div>",
-          res.package.as_deref().unwrap_or("unknown"),
-          res.version.as_deref().unwrap_or("0.0.0")
-        ));
-
         html.push_str(&format!("<div><strong>ID:</strong> {}</div>", issue.get_id()));
         html.push_str(&format!("<div><strong>Analyzer:</strong> {}</div>", issue.analyzer));
         html.push_str("</div>");
@@ -363,6 +422,8 @@ impl Reporter {
 
         html.push_str("</div>");
       }
+      html.push_str("</div>");
+      html.push_str("</details>");
     }
 
     html.push_str("</div></body></html>");

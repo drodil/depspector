@@ -322,15 +322,15 @@ struct Cli {
   verbose: Verbosity,
   #[clap(long, help = "Max concurrent package analyses (defaults to CPU cores)")]
   concurrency: Option<usize>,
-  #[clap(long, help = "Output report as JSON to file")]
+  #[clap(long, value_name = "PATH", help = "Output report as JSON to file", num_args = 0..=1, default_missing_value = "depspector_report.json")]
   json: Option<PathBuf>,
-  #[clap(long, help = "Output report as YAML to file")]
+  #[clap(long, value_name = "PATH", help = "Output report as YAML to file", num_args = 0..=1, default_missing_value = "depspector_report.yaml")]
   yaml: Option<PathBuf>,
-  #[clap(long, help = "Output report as CSV to file")]
+  #[clap(long, value_name = "PATH", help = "Output report as CSV to file", num_args = 0..=1, default_missing_value = "depspector_report.csv")]
   csv: Option<PathBuf>,
-  #[clap(long, help = "Output report as TOON to file")]
+  #[clap(long, value_name = "PATH", help = "Output report as TOON to file", num_args = 0..=1, default_missing_value = "depspector_report.toon")]
   toon: Option<PathBuf>,
-  #[clap(long, help = "Output report as HTML to file")]
+  #[clap(long, value_name = "PATH", help = "Output report as HTML to file", num_args = 0..=1, default_missing_value = "depspector_report.html")]
   html: Option<PathBuf>,
   #[clap(long, help = "Minimum severity level to report (critical, high, medium, low, info)")]
   report_level: Option<String>,

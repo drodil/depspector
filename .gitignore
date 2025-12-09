@@ -49,3 +49,4 @@ debug/
 
 .cache
 test-fixtures-*/
+depspector_report.*
