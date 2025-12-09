@@ -249,6 +249,95 @@ impl Default for Config {
 }
 
 impl Config {
+  pub fn default_generated() -> Self {
+    let mut config = Self::default();
+    config.exit_with_failure_on_level = Some("critical".to_string());
+    config.ai.max_issues = Some(100);
+    config.analyzers = Analyzers {
+      scripts: ScriptsConfig {
+        enabled: Some(true),
+        severity: None,
+        allowed_scripts: default_allowed_scripts(),
+        allowed_commands: default_allowed_commands(),
+      },
+      env: EnvConfig {
+        enabled: Some(true),
+        severity: None,
+        allowed_env_vars: default_allowed_env_vars(),
+      },
+      network: NetworkConfig {
+        enabled: Some(true),
+        severity: None,
+        allowed_hosts: default_allowed_hosts(),
+      },
+      obfuscation: ObfuscationConfig {
+        enabled: Some(true),
+        severity: None,
+        min_string_length: default_min_string_length(),
+      },
+      buffer: BufferConfig {
+        enabled: Some(true),
+        severity: None,
+        min_buffer_length: default_min_buffer_length_buffer(),
+      },
+      base64: Base64Config {
+        enabled: Some(true),
+        severity: None,
+        min_buffer_length: default_min_buffer_length_base64(),
+      },
+      cooldown: CooldownConfig {
+        enabled: Some(true),
+        severity: None,
+        hours_since_publish: default_hours_since_publish(),
+      },
+      dormant: DormantConfig {
+        enabled: Some(true),
+        severity: None,
+        days_since_previous_publish: default_days_since_previous_publish(),
+      },
+      ip: IpConfig { enabled: Some(true), severity: None, allowed_ips: Vec::new() },
+      fs: FsConfig { enabled: Some(true), severity: None, additional_dangerous_paths: Vec::new() },
+      license: LicenseConfig {
+        enabled: Some(true),
+        severity: None,
+        allowed_licenses: Vec::new(),
+        risky_licenses: crate::analyzers::license::default_risky_licenses(),
+      },
+      typosquat: TyposquatConfig {
+        enabled: Some(false),
+        severity: None,
+        popular_packages: Vec::new(),
+      },
+      reputation: ReputationConfig {
+        enabled: Some(true),
+        severity: None,
+        whitelisted_users: Vec::new(),
+      },
+      eval: SimpleConfig { enabled: Some(true), severity: None },
+      process: ProcessConfig { enabled: Some(true), severity: None, allowed_commands: Vec::new() },
+      native: SimpleConfig { enabled: Some(true), severity: None },
+      minified: MinifiedConfig {
+        enabled: Some(true),
+        severity: None,
+        max_line_length: default_max_line_length(),
+        min_code_length: default_min_code_length(),
+        max_whitespace_ratio: default_max_whitespace_ratio(),
+      },
+      pollution: SimpleConfig { enabled: Some(true), severity: None },
+      secrets: SimpleConfig { enabled: Some(true), severity: None },
+      deprecated: SimpleConfig { enabled: Some(true), severity: None },
+      cve: CveConfig {
+        enabled: Some(true),
+        severity: None,
+        cvss_critical: default_cvss_critical(),
+        cvss_high: default_cvss_high(),
+        cvss_medium: default_cvss_medium(),
+      },
+      dynamic: SimpleConfig { enabled: Some(false), severity: None },
+      metadata: MetadataConfig { enabled: Some(false), severity: None },
+    };
+    config
+  }
   pub fn load(config_path: Option<&Path>, cwd: Option<&Path>) -> Result<Self> {
     use napi::Error as NapiError;
 

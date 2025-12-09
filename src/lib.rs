@@ -59,6 +59,41 @@ pub async fn run(args: Vec<String>) -> Result<()> {
     .canonicalize()
     .map_err(|e| NapiError::from_reason(format!("Working directory not found: {}", e)))?;
 
+  if let Some(target_path) = &cli.init_config {
+    let target = working_dir.join(target_path);
+    let default_config = Config::default_generated();
+
+    if target.file_name().and_then(|n| n.to_str()) == Some("package.json") {
+      println!("Adding default configuration to package.json...");
+      if !target.exists() {
+        return Err(NapiError::from_reason("package.json not found"));
+      }
+      let content = std::fs::read_to_string(&target)?;
+      let mut json: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| NapiError::from_reason(format!("Failed to parse package.json: {}", e)))?;
+
+      if let Some(obj) = json.as_object_mut() {
+        obj.insert(
+          "depspector".to_string(),
+          serde_json::to_value(&default_config)
+            .map_err(|e| NapiError::from_reason(format!("Failed to serialize config: {}", e)))?,
+        );
+      }
+
+      let new_content = serde_json::to_string_pretty(&json)
+        .map_err(|e| NapiError::from_reason(format!("Failed to serialize package.json: {}", e)))?;
+      std::fs::write(&target, new_content)?;
+      println!("{}", "Successfully added configuration to package.json".green());
+    } else {
+      println!("Creating default configuration file at {}...", target.display());
+      let content = serde_json::to_string_pretty(&default_config)
+        .map_err(|e| NapiError::from_reason(format!("Failed to serialize config: {}", e)))?;
+      std::fs::write(&target, content)?;
+      println!("{}", format!("Successfully created {}", target.display()).green());
+    }
+    return Ok(());
+  }
+
   let package_json_path = working_dir.join("package.json");
   if !package_json_path.exists() {
     return Err(NapiError::from_reason(format!(
@@ -325,6 +360,14 @@ struct Cli {
   exclude_deps: bool,
   #[clap(long, short = 'i', help = "Interactive mode (TUI) for reviewing issues")]
   interactive: bool,
+  #[clap(
+    long,
+    value_name = "PATH",
+    num_args = 0..=1,
+    default_missing_value = ".depspectorrc",
+    help = "Initialize default configuration file"
+  )]
+  init_config: Option<String>,
 }
 
 #[cfg(test)]

@@ -139,6 +139,7 @@ node bin.js [options]
 - `-a, --analyzer <name...>`: Run only specific analyzers (can be specified multiple times). Overrides config file settings. Example: `--analyzer cve --analyzer deprecated`.
 - `--ignore-issue <id...>`: Ignore specific issues by their ID (can be specified multiple times). Issue IDs are displayed in brackets after each finding.
 - `--concurrency <n>`: Maximum number of concurrent package analyses (defaults to number of CPU cores).
+- `--init-config [path]`: Initialize a default configuration file. Defaults to `.depspectorrc` if no path is provided. If `package.json` is specified, the config is added to the `"depspector"` field.
 - `--json <path>`: Output the analysis report as JSON to the specified file.
 - `--yaml <path>`: Output the analysis report as YAML to the specified file.
 - `--csv <path>`: Output the analysis report as CSV to the specified file. Each row contains: package, file, line, severity, type, message, code, id.

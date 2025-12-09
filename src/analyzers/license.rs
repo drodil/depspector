@@ -18,7 +18,7 @@ pub struct LicenseConfig {
   pub risky_licenses: HashMap<String, String>,
 }
 
-fn default_risky_licenses() -> HashMap<String, String> {
+pub fn default_risky_licenses() -> HashMap<String, String> {
   let mut map = HashMap::new();
   // Restrictive licenses - High severity
   map.insert("GPL ".to_string(), "high".to_string());
