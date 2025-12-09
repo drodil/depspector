@@ -218,76 +218,115 @@ impl DependencyGraph {
     node_modules_path: &Path,
     workspace_packages: &[PackageInfo],
   ) -> (Vec<PackageInfo>, HashMap<String, DependencyType>) {
+    use rayon::prelude::*;
     use walkdir::WalkDir;
 
+    // First collect all package.json paths efficiently
+    let package_json_paths: Vec<_> = WalkDir::new(node_modules_path)
+      .follow_links(false)
+      .into_iter()
+      .filter_entry(|e| {
+        let name = e.file_name().to_string_lossy();
+        if e.file_type().is_dir() {
+          // Skip common non-package directories to speed up walking
+          if matches!(
+            name.as_ref(),
+            ".bin"
+              | "test"
+              | "tests"
+              | "__tests__"
+              | "example"
+              | "examples"
+              | "dist"
+              | "build"
+              | "dist-types"
+              | ".yarn"
+              | ".cache"
+              | ".git"
+              | "docs"
+              | "coverage"
+          ) {
+            return false;
+          }
+        }
+        true
+      })
+      .filter_map(|e| e.ok())
+      .filter(|e| e.file_name() == "package.json")
+      .map(|e| e.path().to_path_buf())
+      .collect();
+
+    // Process package.json files in parallel
+    let all_infos: Vec<Option<PackageInfo>> = package_json_paths
+      .par_iter()
+      .map(|path| {
+        if let Some(pkg) = Self::read_package_json(path) {
+          let name = pkg.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+          if name.is_empty() {
+            return None;
+          }
+
+          let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
+
+          if let Some(pkg_path) = path.parent() {
+            // Verify we are not in a dist/build folder (double check in case it wasn't filtered by dir name)
+            if pkg_path.components().any(|c| {
+              let s = c.as_os_str().to_string_lossy();
+              s == "dist" || s == "build"
+            }) {
+              return None;
+            }
+
+            let deps: Vec<String> = pkg
+              .get("dependencies")
+              .and_then(|v| v.as_object())
+              .map(|obj| obj.keys().cloned().collect())
+              .unwrap_or_default();
+            let dev_deps: Vec<String> = pkg
+              .get("devDependencies")
+              .and_then(|v| v.as_object())
+              .map(|obj| obj.keys().cloned().collect())
+              .unwrap_or_default();
+            let optional_deps: Vec<String> = pkg
+              .get("optionalDependencies")
+              .and_then(|v| v.as_object())
+              .map(|obj| obj.keys().cloned().collect())
+              .unwrap_or_default();
+            let peer_deps: Vec<String> = pkg
+              .get("peerDependencies")
+              .and_then(|v| v.as_object())
+              .map(|obj| obj.keys().cloned().collect())
+              .unwrap_or_default();
+
+            return Some(PackageInfo {
+              name: name.clone(),
+              version: version.clone(),
+              path: pkg_path.to_path_buf(),
+              package_json: pkg,
+              dependency_type: DependencyType::Unknown,
+              is_transient: true,
+              is_root: false,
+              is_local: false,
+              dependencies: deps,
+              dev_dependencies: dev_deps,
+              optional_dependencies: optional_deps,
+              peer_dependencies: peer_deps,
+            });
+          }
+        }
+        None
+      })
+      .collect();
+
+    // Deduplicate and filter None
     let mut all_node_modules_packages = Vec::new();
     let mut seen_packages: std::collections::HashSet<(String, String)> =
       std::collections::HashSet::new();
 
-    for entry in WalkDir::new(node_modules_path)
-      .follow_links(false)
-      .into_iter()
-      .filter_map(|e| e.ok())
-      .filter(|e| e.file_name() == "package.json")
-    {
-      if let Some(pkg) = Self::read_package_json(entry.path()) {
-        let name = pkg.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        if name.is_empty() {
-          continue;
-        }
-
-        let version = pkg.get("version").and_then(|v| v.as_str()).unwrap_or("0.0.0").to_string();
-
-        if seen_packages.contains(&(name.clone(), version.clone())) {
-          continue;
-        }
-
-        if let Some(pkg_path) = entry.path().parent() {
-          if pkg_path.components().any(|c| {
-            let s = c.as_os_str().to_string_lossy();
-            s == "dist" || s == "build"
-          }) {
-            continue;
-          }
-
-          let deps: Vec<String> = pkg
-            .get("dependencies")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.keys().cloned().collect())
-            .unwrap_or_default();
-          let dev_deps: Vec<String> = pkg
-            .get("devDependencies")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.keys().cloned().collect())
-            .unwrap_or_default();
-          let optional_deps: Vec<String> = pkg
-            .get("optionalDependencies")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.keys().cloned().collect())
-            .unwrap_or_default();
-          let peer_deps: Vec<String> = pkg
-            .get("peerDependencies")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.keys().cloned().collect())
-            .unwrap_or_default();
-
-          all_node_modules_packages.push(PackageInfo {
-            name: name.clone(),
-            version: version.clone(),
-            path: pkg_path.to_path_buf(),
-            package_json: pkg,
-            dependency_type: DependencyType::Unknown,
-            is_transient: true,
-            is_root: false,
-            is_local: false,
-            dependencies: deps,
-            dev_dependencies: dev_deps,
-            optional_dependencies: optional_deps,
-            peer_dependencies: peer_deps,
-          });
-
-          seen_packages.insert((name, version));
-        }
+    for info in all_infos.into_iter().flatten() {
+      if !seen_packages.contains(&(info.name.clone(), info.version.clone())) {
+        seen_packages.insert((info.name.clone(), info.version.clone()));
+        all_node_modules_packages.push(info);
       }
     }
 

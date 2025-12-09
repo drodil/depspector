@@ -807,6 +807,7 @@ mod tests {
       trust_score: TrustScore::default(),
       dependency_type: DependencyType::Unknown,
       is_transient: false,
+      analyzers_run: vec![],
     }];
 
     assert!(reporter.has_issues_at_level(&results, "high"));
@@ -828,6 +829,7 @@ mod tests {
       trust_score: TrustScore::default(),
       dependency_type: DependencyType::Unknown,
       is_transient: false,
+      analyzers_run: vec![],
     }];
 
     assert!(reporter.has_issues_at_level(&results, "high"));

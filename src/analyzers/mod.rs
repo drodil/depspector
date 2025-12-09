@@ -367,6 +367,10 @@ pub struct AnalysisResult {
 
   #[serde(default)]
   pub is_from_cache: bool,
+
+  /// List of analyzer names that were run for this result
+  #[serde(default)]
+  pub analyzers_run: Vec<String>,
 }
 
 impl AnalysisResult {
@@ -380,6 +384,7 @@ impl AnalysisResult {
       dependency_type: DependencyType::Unknown,
       is_transient: false,
       is_from_cache: false,
+      analyzers_run: vec![],
     }
   }
 
@@ -393,6 +398,7 @@ impl AnalysisResult {
       dependency_type: DependencyType::Unknown,
       is_transient: false,
       is_from_cache: false,
+      analyzers_run: vec![],
     }
   }
 }
@@ -792,6 +798,10 @@ impl Analyzer {
 
     results.append(&mut analyzed);
 
+    if let Some(cache) = ctx.cache {
+      let _ = cache.save();
+    }
+
     if ctx.fail_fast && results.iter().any(|r| !r.issues.is_empty()) {
       return Ok(results.into_iter().take(1).collect());
     }
@@ -812,25 +822,25 @@ impl Analyzer {
       if let Some(cache) = ctx.cache {
         let max_age = ctx.config.cache_max_age_seconds;
         if let Some(cached) = cache.get_if_fresh(&pkg_info.name, &pkg_info.version, max_age) {
-          let filtered_issues: Vec<_> = cached
-            .issues
-            .iter()
-            .filter(|issue| {
-              self.active_analyzers.iter().any(|a| a.eq_ignore_ascii_case(&issue.analyzer))
-            })
-            .cloned()
-            .collect();
-
-          let cached_analyzer_types: std::collections::HashSet<_> =
-            filtered_issues.iter().map(|i| i.analyzer.to_lowercase()).collect();
+          let cached_analyzer_set: std::collections::HashSet<_> =
+            cached.analyzers_run.iter().map(|a| a.to_lowercase()).collect();
 
           let missing_analyzers: Vec<_> = self
             .active_analyzers
             .iter()
-            .filter(|a| !cached_analyzer_types.contains(&a.to_lowercase()))
+            .filter(|a| !cached_analyzer_set.contains(&a.to_lowercase()))
             .collect();
 
           if missing_analyzers.is_empty() {
+            let filtered_issues: Vec<_> = cached
+              .issues
+              .iter()
+              .filter(|issue| {
+                self.active_analyzers.iter().any(|a| a.eq_ignore_ascii_case(&issue.analyzer))
+              })
+              .cloned()
+              .collect();
+
             let mut result = cached.clone();
             result.issues = filtered_issues;
             result.is_from_cache = true;
@@ -948,6 +958,7 @@ impl Analyzer {
       dependency_type: wi.dependency_type,
       is_transient: wi.is_transient,
       is_from_cache: false,
+      analyzers_run: self.active_analyzers.clone(),
     };
 
     if let Some(cache) = ctx.cache {

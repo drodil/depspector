@@ -127,8 +127,8 @@ impl PackageAnalyzer for CVEAnalyzer {
 
     let cve_config = &context.config.analyzers.cve;
 
-    for vuln in vulns {
-      let severity = CVEAnalyzer::map_severity(&vuln, cve_config);
+    for vuln in vulns.iter() {
+      let severity = CVEAnalyzer::map_severity(vuln, cve_config);
       let summary = vuln
         .summary
         .clone()

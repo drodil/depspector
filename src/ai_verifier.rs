@@ -193,6 +193,10 @@ impl AiVerifier {
       }
     }
 
+    if let Some(cache) = &self.cache {
+      let _ = cache.save();
+    }
+
     if let Some(collector) = &self.benchmark_collector {
       collector.record_analyzer("ai_verifier", start_time.elapsed(), total_processed);
     }

@@ -80,7 +80,7 @@ impl PackageCache {
     Ok(())
   }
 
-  fn save_cache(&self) -> Result<()> {
+  pub fn save(&self) -> Result<()> {
     use napi::Error as NapiError;
 
     let cache_file = self.cache_file();
@@ -188,7 +188,7 @@ impl PackageCache {
       );
     }
 
-    self.save_cache()
+    Ok(())
   }
 
   pub fn update_entry(
@@ -214,7 +214,7 @@ impl PackageCache {
       );
     }
 
-    self.save_cache()
+    Ok(())
   }
 
   pub fn clear_all(&self) -> Result<()> {
@@ -262,7 +262,7 @@ impl PackageCache {
       );
     }
 
-    self.save_cache()
+    Ok(())
   }
 
   pub fn get_network(&self, key: &str, max_age_seconds: u64) -> Option<String> {
@@ -290,7 +290,7 @@ impl PackageCache {
       let mut data = self.data.write().unwrap();
       data.network.insert(key.to_string(), NetworkCacheEntry { content, timestamp });
     }
-    self.save_cache()
+    Ok(())
   }
 }
 
@@ -315,6 +315,8 @@ mod tests {
     let cache = PackageCache::new(cache_dir.to_str().unwrap(), cwd, node_modules).unwrap();
 
     cache.set_ai("ISSUE-1", true, Some("safe".to_string()), Some(0.95)).unwrap();
+    cache.save().unwrap(); // Persist to disk
+
     let entry = cache.get_ai("ISSUE-1").unwrap();
     assert!(entry.is_false_positive);
     assert_eq!(entry.reason, Some("safe".to_string()));

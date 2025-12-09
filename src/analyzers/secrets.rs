@@ -90,7 +90,7 @@ impl FileAnalyzer for SecretsAnalyzer {
       let line = string_lit.line.max(1);
 
       // Check each pattern
-      if AWS_ACCESS_KEY.is_match(value) {
+      if matches.matched(0) && AWS_ACCESS_KEY.is_match(value) {
         add_issue(
           &mut issues,
           self.name(),
@@ -103,7 +103,8 @@ impl FileAnalyzer for SecretsAnalyzer {
         );
       }
 
-      if (RSA_PRIVATE_KEY.is_match(value) || PRIVATE_KEY.is_match(value))
+      if (matches.matched(1) || matches.matched(2))
+        && (RSA_PRIVATE_KEY.is_match(value) || PRIVATE_KEY.is_match(value))
         && has_matching_end_marker(context.source, string_lit.line.saturating_sub(1))
       {
         add_issue(
@@ -118,7 +119,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         );
       }
 
-      if STRIPE_SECRET.is_match(value) {
+      if matches.matched(3) && STRIPE_SECRET.is_match(value) {
         add_issue(
           &mut issues,
           self.name(),
@@ -131,7 +132,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         );
       }
 
-      if GITHUB_TOKEN.is_match(value) {
+      if matches.matched(4) && GITHUB_TOKEN.is_match(value) {
         add_issue(
           &mut issues,
           self.name(),
@@ -144,7 +145,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         );
       }
 
-      if NPM_TOKEN.is_match(value) {
+      if matches.matched(5) && NPM_TOKEN.is_match(value) {
         add_issue(
           &mut issues,
           self.name(),
@@ -157,7 +158,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         );
       }
 
-      if SLACK_TOKEN.is_match(value) {
+      if matches.matched(6) && SLACK_TOKEN.is_match(value) {
         add_issue(
           &mut issues,
           self.name(),
@@ -170,7 +171,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         );
       }
 
-      if GOOGLE_API_KEY.is_match(value) {
+      if matches.matched(7) && GOOGLE_API_KEY.is_match(value) {
         add_issue(
           &mut issues,
           self.name(),
@@ -183,7 +184,7 @@ impl FileAnalyzer for SecretsAnalyzer {
         );
       }
 
-      if TWILIO_KEY.is_match(value) {
+      if matches.matched(8) && TWILIO_KEY.is_match(value) {
         add_issue(
           &mut issues,
           self.name(),
@@ -198,7 +199,8 @@ impl FileAnalyzer for SecretsAnalyzer {
 
       if value.len() >= 20 {
         let line_text = context.source.lines().nth(line.saturating_sub(1)).unwrap_or("");
-        if GENERIC_API_KEY.is_match(line_text)
+        if matches.matched(9)
+          && GENERIC_API_KEY.is_match(line_text)
           && !AWS_ACCESS_KEY.is_match(value)
           && !STRIPE_SECRET.is_match(value)
           && !GITHUB_TOKEN.is_match(value)

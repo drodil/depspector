@@ -90,9 +90,9 @@ struct DatabaseSpecific {
 /// Pre-fetched data store for all packages
 pub struct PrefetchedData {
   /// Registry metadata keyed by package name (contains all versions)
-  metadata: Arc<RwLock<HashMap<String, PackageMetadata>>>,
+  metadata: Arc<RwLock<HashMap<String, Arc<PackageMetadata>>>>,
   /// CVE/vulnerability info keyed by "name@version"
-  vulnerabilities: Arc<RwLock<HashMap<String, Vec<VulnerabilityInfo>>>>,
+  vulnerabilities: Arc<RwLock<HashMap<String, Arc<Vec<VulnerabilityInfo>>>>>,
   /// Registry for fallback requests
   registry: Registry,
   /// Cache directory for fallback requests
@@ -109,7 +109,7 @@ impl PrefetchedData {
     }
   }
 
-  pub async fn get_metadata(&self, name: &str, version: &str) -> Option<PackageMetadata> {
+  pub async fn get_metadata(&self, name: &str, version: &str) -> Option<Arc<PackageMetadata>> {
     {
       let cache = self.metadata.read().await;
       if let Some(meta) = cache.get(name) {
@@ -126,8 +126,9 @@ impl PrefetchedData {
       if let Ok(content) = std::fs::read_to_string(&path) {
         if let Ok(meta) = serde_json::from_str::<PackageMetadata>(&content) {
           let mut cache = self.metadata.write().await;
-          cache.insert(name.to_string(), meta.clone());
-          return Some(meta);
+          let arc_meta = Arc::new(meta);
+          cache.insert(name.to_string(), arc_meta.clone());
+          return Some(arc_meta);
         }
       }
     }
@@ -135,7 +136,9 @@ impl PrefetchedData {
     match self.registry.get_package(name).await {
       Ok(meta) => {
         let mut cache = self.metadata.write().await;
-        cache.insert(name.to_string(), meta.clone());
+        // Don't save to file here for fallback logic if we want to avoid IO,
+        // but existing logic did it. We'll keep it.
+        // Actually existing logic wrote to file.
 
         if let Ok(content) = serde_json::to_string(&meta) {
           if let Some(parent) = path.parent() {
@@ -143,7 +146,10 @@ impl PrefetchedData {
           }
           let _ = std::fs::write(path, content);
         }
-        Some(meta)
+
+        let arc_meta = Arc::new(meta);
+        cache.insert(name.to_string(), arc_meta.clone());
+        Some(arc_meta)
       }
       Err(e) => {
         log::debug!("[PREFETCH] Failed to fetch metadata for {}: {}", name, e);
@@ -156,7 +162,7 @@ impl PrefetchedData {
     &self,
     name: &str,
     version: &str,
-  ) -> Option<Vec<VulnerabilityInfo>> {
+  ) -> Option<Arc<Vec<VulnerabilityInfo>>> {
     let key = format!("{}@{}", name, version);
     let cache = self.vulnerabilities.read().await;
     cache.get(&key).cloned()
@@ -222,6 +228,11 @@ impl Prefetcher {
       self.prefetch_metadata(&packages_with_highest_version, cache_dir, concurrency, &data, cache),
       self.prefetch_cves(packages, &data, cache)
     );
+
+    if let Some(pc) = cache {
+      let _ = pc.save();
+    }
+
     log::debug!(
       "[PREFETCH] Parallel prefetch took {:?} (metadata: {} unique packages, CVE: {} packages)",
       prefetch_start.elapsed(),
@@ -302,7 +313,7 @@ impl Prefetcher {
     let mut metadata_map = data.metadata.write().await;
     for result in results.into_iter().flatten() {
       let (name, meta) = result;
-      metadata_map.insert(name, meta);
+      metadata_map.insert(name, Arc::new(meta));
     }
   }
 
@@ -339,7 +350,7 @@ impl Prefetcher {
     {
       let mut vuln_map = data.vulnerabilities.write().await;
       for (key, vulns) in cached_cves {
-        vuln_map.insert(key, vulns);
+        vuln_map.insert(key, Arc::new(vulns));
       }
     }
 
@@ -385,7 +396,7 @@ impl Prefetcher {
       let mut vuln_map = data.vulnerabilities.write().await;
       for (pkg, result) in chunk.iter().zip(batch_response.results.iter()) {
         let key = pkg.cache_key();
-        let vulns = result
+        let vulns: Vec<VulnerabilityInfo> = result
           .vulns
           .as_ref()
           .map(|v| {
@@ -414,7 +425,7 @@ impl Prefetcher {
           }
         }
 
-        vuln_map.insert(key, vulns);
+        vuln_map.insert(key, Arc::new(vulns));
       }
     }
   }
